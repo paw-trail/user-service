@@ -84,4 +84,32 @@ public class UserProfile extends BaseEntity {
         }
         return new UserProfile(accountId, nickname);
     }
+
+    /**
+     * 닉네임과 사진 주소를 바꿉니다.
+     *
+     * null 을 그대로 반영합니다. 지운다는 뜻입니다.
+     * "안 보냈다" 와 "null 을 보냈다" 를 가르지 않는 것은
+     * 화면이 두 값을 항상 함께 보내기 때문입니다.
+     *
+     * 길이 검증은 요청 계층이 이미 했습니다.
+     * 여기서 또 보면 같은 규칙이 두 곳에 생겨 한쪽만 고쳐질 자리가 됩니다.
+     */
+    public void updateProfile(String nickname, String profileImageUrl) {
+        this.nickname = nickname;
+        this.profileImageUrl = profileImageUrl;
+    }
+
+    /**
+     * 대표 반려동물을 바꿉니다.
+     *
+     * null 을 받으면 해제입니다. 잘못된 요청이 아니라 유효한 요청입니다.
+     * 반려동물이 0마리인 상태를 정식으로 지원하기 때문입니다.
+     *
+     * 그 petId 가 존재하는지, 이 사람 것인지는 여기서 보지 않습니다.
+     * pet 서비스를 호출해야 알 수 있고 아직 그 기반이 없습니다.
+     */
+    public void changeDefaultPet(UUID petId) {
+        this.defaultPetId = petId;
+    }
 }

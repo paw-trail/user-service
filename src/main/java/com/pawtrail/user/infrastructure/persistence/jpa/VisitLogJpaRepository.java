@@ -9,4 +9,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
  * 이 파일은 도메인이 보지 않습니다.
  */
 public interface VisitLogJpaRepository extends JpaRepository<VisitLog, UUID> {
+
+    long countByAccountId(UUID accountId);
 }
