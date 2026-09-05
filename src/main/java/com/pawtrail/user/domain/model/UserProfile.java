@@ -86,17 +86,32 @@ public class UserProfile extends BaseEntity {
     }
 
     /**
-     * 닉네임과 사진 주소를 바꿉니다.
+     * 닉네임을 바꿉니다.
      *
-     * null 을 그대로 반영합니다. 지운다는 뜻입니다.
-     * "안 보냈다" 와 "null 을 보냈다" 를 가르지 않는 것은
-     * 화면이 두 값을 항상 함께 보내기 때문입니다.
+     * 사진과 따로 둔 것은 부르는 조건이 다르기 때문입니다.
+     * 닉네임은 값이 왔을 때만 바꾸고, 사진은 필드가 요청에 있었으면 null 이어도 반영합니다.
+     * 한 메서드로 묶으면 "이번에는 어느 쪽을 건드리는지" 를 인자로 또 전해야 합니다.
      *
-     * 길이 검증은 요청 계층이 이미 했습니다.
+     * null 을 받지 않습니다. 닉네임을 지우는 동작이 없기 때문입니다.
+     * 요청 계층이 이미 막지만, 다른 경로로 들어와도 여기서 걸립니다.
+     *
+     * 길이 검증은 요청 계층이 합니다.
      * 여기서 또 보면 같은 규칙이 두 곳에 생겨 한쪽만 고쳐질 자리가 됩니다.
      */
-    public void updateProfile(String nickname, String profileImageUrl) {
+    public void changeNickname(String nickname) {
+        if (nickname == null) {
+            throw new IllegalArgumentException("닉네임은 지울 수 없습니다.");
+        }
         this.nickname = nickname;
+    }
+
+    /**
+     * 프로필 사진 주소를 바꿉니다.
+     *
+     * null 을 그대로 반영합니다. 지운다는 뜻입니다.
+     * 사진이 없으면 화면에 기본 이미지가 뜨므로 성립하는 상태입니다.
+     */
+    public void changeProfileImageUrl(String profileImageUrl) {
         this.profileImageUrl = profileImageUrl;
     }
 

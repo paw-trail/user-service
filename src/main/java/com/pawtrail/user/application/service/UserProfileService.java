@@ -98,7 +98,13 @@ public class UserProfileService {
     /**
      * 닉네임과 사진 주소를 바꿉니다.
      *
-     * 둘 다 null 을 그대로 반영합니다. 지운다는 뜻입니다.
+     * 요청에 담겨 온 것만 바꿉니다. 안 보낸 필드는 건드리지 않습니다.
+     * 사진만 바꾸려고 보낸 요청이 닉네임까지 지우면 안 되기 때문입니다.
+     *
+     * 두 필드의 조건이 다릅니다.
+     *   nickname          값이 왔을 때만 바꿈. null 은 "안 보냈다" 하나만 뜻함
+     *                     명시적 null 은 요청 계층이 이미 400 으로 막았음
+     *   profileImageUrl   필드가 요청에 있었으면 반영함. null 이면 지운다는 뜻
      *
      * 바꾼 뒤 save 를 부르지 않습니다.
      * 트랜잭션 안에서 조회한 엔티티라 변경 감지가 커밋 시점에 UPDATE 를 냅니다.
@@ -108,7 +114,12 @@ public class UserProfileService {
     public ProfileOutput updateProfile(UUID accountId, ProfileUpdateInput input) {
         UserProfile profile = getOrThrow(accountId);
 
-        profile.updateProfile(input.nickname(), input.profileImageUrl());
+        if (input.nickname() != null) {
+            profile.changeNickname(input.nickname());
+        }
+        if (input.profileImageUrlProvided()) {
+            profile.changeProfileImageUrl(input.profileImageUrl());
+        }
 
         ProfileOutput.Stats stats = new ProfileOutput.Stats(
                 visitLogRepository.countByAccountId(accountId),
@@ -122,20 +133,36 @@ public class UserProfileService {
     /**
      * 대표 반려동물을 바꿉니다.
      *
-     * petId 가 null 이면 해제입니다. 유효한 요청입니다.
-     * 반려동물이 0마리인 상태를 정식으로 지원하기 때문입니다.
+     * 지금은 해제만 됩니다. 값을 보내면 400 입니다.
      *
-     * 그 petId 가 실제로 있는지, 이 사람 것인지는 확인하지 않습니다.
-     * pet 서비스를 호출해야 알 수 있는데 아직 그 기반이 없습니다.
-     * 검증은 외부 호출 기반을 세우는 이슈에서 함께 붙입니다.
+     * 그 petId 가 실제로 있는지, 이 사람 것인지를 확인할 방법이 아직 없기 때문입니다.
+     * pet 서비스를 호출해야 하는데 그 서비스도, 서비스 간 호출 기반도 아직 없습니다.
+     *
+     * 확인하지 못하는 값을 저장하면 남의 반려동물 식별자가 여기 들어올 수 있습니다.
+     * 그러면 검색과 판정이 그 반려동물 기준으로 돌아갑니다.
+     * petIds 를 생략한 요청은 서버가 이 값을 쓰기 때문입니다.
+     * GET /internal/pets?ids= 에 소유권 검증을 필수로 둔 것과 같은 이유이고,
+     * 이 컬럼은 그 검증을 우회하는 경로가 됩니다.
+     *
+     * 지금 막아도 화면이 막히지 않습니다.
+     * pet 서비스가 없어 지정할 반려동물 자체가 존재하지 않습니다.
+     *
+     * 외부 호출 기반을 세우는 이슈에서 이 블록을 검증 호출로 바꿉니다.
+     * 그때까지 열어 두면 검증을 붙이는 것을 잊어도 드러나지 않습니다.
      */
     @Transactional
     public void changeDefaultPet(UUID accountId, UUID petId) {
+        if (petId != null) {
+            log.warn("대표 반려동물 지정을 아직 지원하지 않습니다: accountId={}, petId={}",
+                    accountId, petId);
+            throw new CustomException(CommonErrorCode.VALIDATION_FAILED);
+        }
+
         UserProfile profile = getOrThrow(accountId);
 
-        profile.changeDefaultPet(petId);
+        profile.changeDefaultPet(null);
 
-        log.info("대표 반려동물을 바꿨습니다: accountId={}, petId={}", accountId, petId);
+        log.info("대표 반려동물을 해제했습니다: accountId={}", accountId);
     }
 
     /**
