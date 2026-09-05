@@ -85,8 +85,12 @@ public class UserController {
      *
      * 프론트가 할 일이 셋입니다.
      *   ① 여기서 uploadUrl 과 fileUrl 을 받음
-     *   ② uploadUrl 로 파일을 PUT.  ★Content-Type 헤더를 요청한 값과 똑같이 보낼 것
-     *      서명에 그 값이 들어 있어 다르면 S3 가 403 을 냄
+     *      *요청에 contentType 과 contentLength 를 함께 보낼 것
+     *        contentLength 는 올릴 파일의 정확한 바이트 수임(file.size)
+     *   ② uploadUrl 로 파일을 PUT
+     *      *Content-Type 헤더를 요청한 값과 똑같이 보낼 것
+     *      *파일 크기도 요청한 값과 똑같아야 함
+     *        둘 다 서명에 들어 있어 하나라도 다르면 S3 가 403 을 냄
      *   ③ fileUrl 을 PATCH /users/me 의 profileImageUrl 에 담아 보냄
      *
      * ②까지만 하고 ③을 안 하면 파일은 올라갔는데 프로필에 안 붙습니다.
@@ -97,8 +101,8 @@ public class UserController {
             @CurrentUser CustomUserPrincipal principal,
             @Valid @RequestBody UploadUrlRequest request) {
 
-        UploadUrlOutput response =
-                userProfileService.issueUploadUrl(principal.accountId(), request.contentType());
+        UploadUrlOutput response = userProfileService.issueUploadUrl(
+                principal.accountId(), request.contentType(), request.contentLength());
         return ResponseEntity.ok(CommonApiResponse.success(response));
     }
 

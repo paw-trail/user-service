@@ -60,8 +60,16 @@ public interface StorageProvider {
      * 그러면 브라우저는 그 타입으로만 올릴 수 있고,
      * S3 가 그 값을 객체에 저장해 두었다가 조회할 때 그대로 돌려줍니다.
      * 확장자가 없어도 브라우저가 형식을 아는 것이 이 때문입니다.
+     *
+     * contentLength 도 서명에 넣습니다.
+     * 그 크기가 아닌 요청은 S3 가 거부하므로 클라이언트 검증에 기대지 않게 됩니다.
+     *
+     * presigned PUT 에는 크기 범위를 걸 수 없어 정확한 값을 받습니다.
+     * 범위 조건(content-length-range)은 presigned POST 의 폼 정책에만 있고,
+     * 버킷 정책에도 크기를 보는 조건 키가 없습니다.
+     * 상한 자체는 부르는 쪽이 봅니다. 서명은 "요청한 크기와 다른 것" 만 막습니다.
      */
-    String presignUpload(String key, String contentType);
+    String presignUpload(String key, String contentType, long contentLength);
 
     /**
      * 그 자리의 파일을 볼 수 있는 주소를 만듭니다.

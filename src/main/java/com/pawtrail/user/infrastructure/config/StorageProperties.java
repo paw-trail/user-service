@@ -29,6 +29,8 @@ import org.springframework.validation.annotation.Validated;
  *                                발급받고 바로 올리므로 짧아도 됩니다.
  * @param downloadExpiresSeconds  조회 서명 유효 시간입니다.
  *                                화면을 열어 둔 채로 있어도 안 깨질 만큼 둡니다.
+ * @param maxImageBytes           올릴 수 있는 이미지의 최대 크기입니다.
+ *                                이 값을 넘으면 주소를 발급하지 않습니다.
  */
 @Validated
 @ConfigurationProperties(prefix = "app.storage")
@@ -44,6 +46,9 @@ public record StorageProperties(
         long uploadExpiresSeconds,
 
         @Positive(message = "app.storage.download-expires-seconds 는 양수여야 합니다")
-        long downloadExpiresSeconds
+        long downloadExpiresSeconds,
+
+        @Positive(message = "app.storage.max-image-bytes 는 양수여야 합니다")
+        long maxImageBytes
 ) {
 }

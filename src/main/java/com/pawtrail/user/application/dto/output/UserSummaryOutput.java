@@ -15,7 +15,7 @@ import java.util.UUID;
  * @param nickname        탈퇴한 사람은 "탈퇴한 사용자" 로 치환된 값이 나갑니다.
  *                        아직 설정하지 않은 사람은 null 입니다.
  * @param profileImageUrl 서명된 주소입니다. 안 올렸으면 null 입니다.
- *                        ★1시간 뒤 만료되므로 부르는 쪽이 이 응답을 캐시하면 안 됩니다.
+ *                        *1시간 뒤 만료되므로 부르는 쪽이 이 응답을 캐시하면 안 됩니다.
  *                        후기 목록을 캐시해 두면 그 뒤에 깨진 이미지가 뜹니다.
  */
 public record UserSummaryOutput(UUID accountId,

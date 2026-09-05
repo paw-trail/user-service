@@ -53,13 +53,20 @@ public class S3StorageProvider implements StorageProvider {
     }
 
     @Override
-    public String presignUpload(String key, String contentType) {
+    public String presignUpload(String key, String contentType, long contentLength) {
         PutObjectRequest objectRequest = PutObjectRequest.builder()
                 .bucket(storageProperties.bucket())
                 .key(key)
                 // 서명에 들어가므로 브라우저는 이 타입으로만 올릴 수 있음
                 // S3 가 이 값을 객체에 저장해 두었다가 조회할 때 그대로 돌려줌
                 .contentType(contentType)
+                // 이 값도 서명에 들어감
+                // 다른 크기로 올리면 S3 가 거부하므로 클라이언트 검증에 기대지 않게 됨
+                //
+                // 범위가 아니라 정확한 값임
+                // presigned PUT 에는 범위를 걸 수 없고, 버킷 정책에도 크기 조건 키가 없음
+                // 프론트가 file.size 를 그대로 보내야 하며 한 바이트라도 다르면 403 이 남
+                .contentLength(contentLength)
                 .build();
 
         PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()

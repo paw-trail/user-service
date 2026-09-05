@@ -8,7 +8,7 @@ package com.pawtrail.user.application.dto.output;
  *   uploadUrl   브라우저가 파일을 PUT 하는 곳입니다.
  *               서명이 쿼리에 통째로 들어 있고 정해진 시간 뒤 만료됩니다.
  *
- *   fileUrl     ★PATCH /users/me 에 담아 보낼 값입니다.
+ *   fileUrl     *PATCH /users/me 에 담아 보낼 값입니다.
  *               서명이 없는 순수한 주소이고, 서버는 이 값에서 키만 꺼내 저장합니다.
  *
  * 둘을 헷갈리면 uploadUrl 이 저장될 수 있는데,

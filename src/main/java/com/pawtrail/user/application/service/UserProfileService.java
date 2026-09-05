@@ -103,17 +103,34 @@ public class UserProfileService {
      * 프로필이 있는지 먼저 확인합니다.
      * 없는 계정에 주소를 내주면 올릴 수는 있는데 그 뒤에 붙일 자리가 없습니다.
      *
+     * 크기 상한은 여기서 봅니다.
+     * 서명에도 크기가 들어가지만 그것은 "요청한 크기와 다른 것" 을 막을 뿐
+     * 상한을 막지는 못합니다. 20MB 를 달라고 하면 20MB 짜리 서명이 나갑니다.
+     *
+     * 상한을 S3 쪽에 맡길 방법이 없습니다.
+     * presigned PUT 에는 범위 조건을 걸 수 없고,
+     * 버킷 정책에도 크기를 보는 조건 키가 없습니다.
+     * content-length-range 는 presigned POST 의 폼 정책에만 있습니다.
+     *
+     * 넘으면 주소를 아예 내주지 않으므로 S3 로 요청이 가지도 않습니다.
+     *
      * 데이터베이스를 고치지 않으므로 트랜잭션은 읽기 전용입니다.
      * 실제로 사진이 붙는 것은 프론트가 PATCH /users/me 를 부를 때입니다.
      */
     @Transactional(readOnly = true)
-    public UploadUrlOutput issueUploadUrl(UUID accountId, String contentType) {
+    public UploadUrlOutput issueUploadUrl(UUID accountId, String contentType, long contentLength) {
         getOrThrow(accountId);
+
+        if (contentLength > storageProperties.maxImageBytes()) {
+            log.warn("이미지가 상한을 넘었습니다: accountId={}, contentLength={}, max={}",
+                    accountId, contentLength, storageProperties.maxImageBytes());
+            throw new CustomException(CommonErrorCode.VALIDATION_FAILED);
+        }
 
         String key = storageProvider.profileImageKey(accountId);
 
         return new UploadUrlOutput(
-                storageProvider.presignUpload(key, contentType),
+                storageProvider.presignUpload(key, contentType, contentLength),
                 storageProvider.publicUrl(key),
                 storageProperties.uploadExpiresSeconds());
     }

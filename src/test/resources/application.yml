@@ -74,6 +74,7 @@ app:
     region: ap-northeast-2
     upload-expires-seconds: 600
     download-expires-seconds: 3600
+    max-image-bytes: 20971520
 
 eureka:
   client:
