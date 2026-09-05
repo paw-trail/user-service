@@ -85,6 +85,12 @@ public class ItineraryStop extends BaseEntity {
      *
      * visitOrder 는 서비스가 그날 마지막 순서를 조회해 계산한 뒤 넘깁니다.
      * 요청에는 담기지 않습니다.
+     *
+     * 1 미만을 거부하는 것은 정렬 때문이 아닙니다.
+     * 상대 순서만 보므로 음수여도 정렬 자체는 정확합니다.
+     * 다만 그날 마지막 + 1 로 채우는 규칙에서는 1 미만이 나올 수 없으므로,
+     * 그런 값이 들어왔다는 것은 계산이 어딘가에서 틀렸다는 신호입니다.
+     * 잘못된 값이 행으로 남기 전에 여기서 멈춥니다.
      */
     public static ItineraryStop create(UUID accountId, UUID placeId, LocalDateTime visitAt,
                                        UUID petId, Integer visitOrder, String memo) {
@@ -94,8 +100,8 @@ public class ItineraryStop extends BaseEntity {
         if (visitAt == null) {
             throw new IllegalArgumentException("visitAt 은 필수입니다.");
         }
-        if (visitOrder == null) {
-            throw new IllegalArgumentException("visitOrder 는 서버가 채워야 합니다.");
+        if (visitOrder == null || visitOrder < 1) {
+            throw new IllegalArgumentException("visitOrder 는 1 이상이어야 하며 서버가 채웁니다.");
         }
         return new ItineraryStop(accountId, placeId, visitAt, petId, visitOrder, memo);
     }

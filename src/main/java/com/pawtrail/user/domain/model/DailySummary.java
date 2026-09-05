@@ -6,6 +6,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -23,6 +24,12 @@ import lombok.NoArgsConstructor;
  * 대리 키 없이 복합 기본 키인 것이 곧 "하루에 한 줄" 을 강제하는 장치입니다.
  * upsert 만 하면 중복이 원천적으로 생기지 않습니다.
  *
+ * 다만 그 강제가 성립하려면 visit_date 에 시각이 섞이지 않아야 합니다.
+ * 컬럼은 timestamp 인데 뜻은 날짜이므로,
+ * 같은 날의 09:30 과 14:12 가 들어오면 복합 키가 달라져 두 행이 생깁니다.
+ * 그래서 만드는 문에서 LocalDate 를 받아 atStartOfDay 로 한 번만 변환합니다.
+ * 조회도 DailySummaryId.of 가 같은 변환을 쓰므로 저장과 조회의 짝이 맞습니다.
+ *
  * 하드 딜리트입니다.
  */
 @Entity
@@ -38,11 +45,12 @@ public class DailySummary extends BaseEntity {
 
     // 요약 대상 날짜임
     //
-    // 서버가 반드시 00:00 으로 고정해 넣어야 함
-    // 시각이 섞이면 복합 키가 "하루에 한 줄" 을 못 막음
+    // 뜻은 날짜이고 시각 부분은 항상 00:00 임
+    // 타입이 LocalDateTime 인 것은 "시각은 전부 timestamp" 라는 전역 규약을 따른 것이고,
+    // 컬럼을 date 로 바꾸려면 새 마이그레이션 번호가 필요함
     //
-    // API 는 visitDate 를 날짜 문자열로 받으므로
-    // 00:00 을 붙이는 지점이 한 곳으로 모여 있어야 함
+    // 이 필드를 직접 채우는 경로는 없음
+    // create 와 DailySummaryId.of 만 값을 만들며 둘 다 LocalDate 를 받음
     @Id
     @Column(name = "visit_date", nullable = false, updatable = false)
     private LocalDateTime visitDate;
@@ -70,12 +78,11 @@ public class DailySummary extends BaseEntity {
     /**
      * 요약을 만듭니다.
      *
-     * visitDate 는 반드시 00:00 으로 잘라 넘겨야 합니다.
-     * 자르는 책임을 여기 두지 않는 이유는
-     * 조회할 때도 같은 규칙으로 잘라야 하는데 그 자리가 여기가 아니기 때문입니다.
-     * 한 곳에서 자르고 그 값을 조회와 저장에 함께 씁니다.
+     * visitDate 를 LocalDate 로 받아 00:00 으로 자릅니다.
+     * 부르는 쪽이 자르게 두면 잊는 순간 같은 날짜에 여러 행이 생기고,
+     * 그 뒤로는 findById 와 upsert 가 어느 행을 가리킬지 정해지지 않습니다.
      */
-    public static DailySummary create(UUID accountId, LocalDateTime visitDate,
+    public static DailySummary create(UUID accountId, LocalDate visitDate,
                                       String summary, LocalDateTime generatedAt) {
         if (accountId == null || visitDate == null) {
             throw new IllegalArgumentException("accountId 와 visitDate 는 필수입니다.");
@@ -86,6 +93,6 @@ public class DailySummary extends BaseEntity {
         if (generatedAt == null) {
             throw new IllegalArgumentException("generatedAt 은 필수입니다.");
         }
-        return new DailySummary(accountId, visitDate, summary, generatedAt);
+        return new DailySummary(accountId, visitDate.atStartOfDay(), summary, generatedAt);
     }
 }
