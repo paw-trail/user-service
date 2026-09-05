@@ -13,10 +13,6 @@ import java.util.UUID;
  * 지금은 최소한만 둡니다.
  * 조회 메서드를 미리 만들어도 그 형태가 맞는지는 그 API 를 만들 때 알게 되므로,
  * 이슈마다 필요한 것을 여기에 더해 갑니다.
- *
- * 탈퇴한 프로필은 엔티티의 @SQLRestriction 이 걸러 냅니다.
- * 그 제한을 우회해야 하는 조회는 이벤트 순서 역전을 막을 때 필요한데,
- * 그것은 account.created 를 소비하는 이슈에서 더합니다.
  */
 public interface UserProfileRepository {
 
@@ -25,5 +21,18 @@ public interface UserProfileRepository {
 
     // 계정 식별자로 찾음
     // 게이트웨이가 넣어 준 X-User-Id 로 조회하는 경로가 여기를 씀
+    //
+    // 탈퇴한 프로필은 여기에 안 걸림
+    // UserProfile 에 @SQLRestriction("deleted_at IS NULL") 이 붙어 있기 때문임
     Optional<UserProfile> findById(UUID accountId);
+
+    // 탈퇴한 것까지 포함해 그 계정의 행이 있는지 봄
+    //
+    // 위 findById 로는 삭제 표시 행이 보이지 않으므로 따로 둠
+    // account.created 를 소비할 때 "이미 탈퇴한 계정인가" 를 판단하는 데 씀
+    //
+    // 반환이 Optional 이 아니라 boolean 인 이유
+    // 부르는 쪽이 알아야 하는 것은 있는지 없는지뿐이고,
+    // 삭제 표시 행은 account_id 말고 담긴 값이 없어 꺼내 봐야 쓸 것이 없음
+    boolean existsIncludingDeleted(UUID accountId);
 }

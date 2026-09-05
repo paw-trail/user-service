@@ -16,6 +16,9 @@ import org.springframework.stereotype.Repository;
  *   조회 방식이 바뀌어도 도메인 인터페이스는 그대로임
  *   조회가 복잡해져도 도메인이 보는 것은 이 클래스 하나임
  *
+ * existsIncludingDeleted 가 네이티브 쿼리라는 사실도 이 층에 갇힙니다.
+ * 도메인은 "탈퇴한 것까지 포함해 확인한다" 만 알면 됩니다.
+ *
  * 조회 수단을 둘 쓰게 되어도 파일은 이것 하나입니다.
  * JpaRepository 와 JPAQueryFactory 를 함께 주입받아,
  * 단순한 조회는 앞의 것에 위임하고 동적 조건은 뒤의 것으로 짭니다.
@@ -37,5 +40,10 @@ public class UserProfileRepositoryImpl implements UserProfileRepository {
     @Override
     public Optional<UserProfile> findById(UUID accountId) {
         return userProfileJpaRepository.findById(accountId);
+    }
+
+    @Override
+    public boolean existsIncludingDeleted(UUID accountId) {
+        return userProfileJpaRepository.existsIncludingDeleted(accountId);
     }
 }
