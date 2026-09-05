@@ -4,11 +4,14 @@ import com.pawtrail.common.exception.CommonErrorCode;
 import com.pawtrail.common.exception.CustomException;
 import com.pawtrail.user.application.dto.input.ProfileUpdateInput;
 import com.pawtrail.user.application.dto.output.ProfileOutput;
+import com.pawtrail.user.application.dto.output.UploadUrlOutput;
 import com.pawtrail.user.application.dto.output.UserSummaryOutput;
 import com.pawtrail.user.domain.model.UserProfile;
+import com.pawtrail.user.domain.provider.StorageProvider;
 import com.pawtrail.user.domain.repository.FavoriteRepository;
 import com.pawtrail.user.domain.repository.UserProfileRepository;
 import com.pawtrail.user.domain.repository.VisitLogRepository;
+import com.pawtrail.user.infrastructure.config.StorageProperties;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -36,6 +39,8 @@ public class UserProfileService {
     private final UserProfileRepository userProfileRepository;
     private final FavoriteRepository favoriteRepository;
     private final VisitLogRepository visitLogRepository;
+    private final StorageProvider storageProvider;
+    private final StorageProperties storageProperties;
 
     /**
      * account.created 를 받아 프로필을 만듭니다.
@@ -86,13 +91,31 @@ public class UserProfileService {
     public ProfileOutput getMyProfile(UUID accountId) {
         UserProfile profile = getOrThrow(accountId);
 
-        ProfileOutput.Stats stats = new ProfileOutput.Stats(
-                visitLogRepository.countByAccountId(accountId),
-                // review 서비스를 세우면 GET /internal/reviews/count?accountId= 로 채움
-                null,
-                favoriteRepository.countByAccountId(accountId));
+        return toOutput(profile);
+    }
 
-        return ProfileOutput.of(profile, stats);
+    /**
+     * 프로필 사진을 올릴 주소를 발급합니다.
+     *
+     * 이 서버는 파일을 받지 않습니다. 주소만 만들어 주고 브라우저가 S3 로 직접 PUT 합니다.
+     * 그래서 서버가 파일 크기만큼의 메모리도 대역폭도 쓰지 않습니다.
+     *
+     * 프로필이 있는지 먼저 확인합니다.
+     * 없는 계정에 주소를 내주면 올릴 수는 있는데 그 뒤에 붙일 자리가 없습니다.
+     *
+     * 데이터베이스를 고치지 않으므로 트랜잭션은 읽기 전용입니다.
+     * 실제로 사진이 붙는 것은 프론트가 PATCH /users/me 를 부를 때입니다.
+     */
+    @Transactional(readOnly = true)
+    public UploadUrlOutput issueUploadUrl(UUID accountId, String contentType) {
+        getOrThrow(accountId);
+
+        String key = storageProvider.profileImageKey(accountId);
+
+        return new UploadUrlOutput(
+                storageProvider.presignUpload(key, contentType),
+                storageProvider.publicUrl(key),
+                storageProperties.uploadExpiresSeconds());
     }
 
     /**
@@ -118,16 +141,70 @@ public class UserProfileService {
             profile.changeNickname(input.nickname());
         }
         if (input.profileImageUrlProvided()) {
-            profile.changeProfileImageUrl(input.profileImageUrl());
+            profile.changeProfileImageUrl(toStoredKey(accountId, input.profileImageUrl()));
         }
+
+        log.info("프로필을 수정했습니다: accountId={}", accountId);
+        return toOutput(profile);
+    }
+
+    /**
+     * 요청이 들고 온 사진 주소를 저장할 키로 바꿉니다.
+     *
+     * 저장하는 것은 주소가 아니라 키입니다.
+     * 조회 방식이 바뀌어도 데이터를 안 건드리기 위해서입니다.
+     * 나중에 CloudFront 를 앞에 붙이면 조립하는 쪽만 고치면 됩니다.
+     *
+     * 그 전에 서버가 만든 정답과 대조합니다.
+     * 키가 계정당 하나로 고정이라 정답이 하나뿐입니다.
+     * 이 대조가 없으면 이런 값들이 그대로 저장됩니다.
+     *   프론트가 실수로 보낸 uploadUrl — 서명이 붙어 있어 조회 때 깨짐
+     *   남의 사진 주소 — 남의 사진이 내 프로필에 뜸
+     *   아무 문자열 — 조회 때 깨짐
+     */
+    private String toStoredKey(UUID accountId, String url) {
+        if (url == null) {
+            return null;
+        }
+
+        String key = storageProvider.profileImageKey(accountId);
+        if (!storageProvider.publicUrl(key).equals(url)) {
+            log.warn("프로필 사진 주소가 발급한 것과 다릅니다: accountId={}", accountId);
+            throw new CustomException(CommonErrorCode.VALIDATION_FAILED);
+        }
+        return key;
+    }
+
+    /**
+     * 응답으로 내보낼 형태로 만듭니다.
+     *
+     * 사진은 저장된 키에 서명을 붙여 실제로 열리는 주소로 바꿉니다.
+     * 버킷이 퍼블릭 액세스를 차단해 두어 서명 없이는 안 열립니다.
+     *
+     * stats 셋 중 둘은 우리 표를 세고 reviewCount 만 review 서비스가 줍니다.
+     * 그 서비스가 아직 없어 지금은 null 입니다.
+     * 명세도 "호출 실패 시 null" 로 정해 두었으므로 프론트가 이 상태를 다룹니다.
+     * 통계 하나 때문에 마이페이지가 안 뜨면 안 됩니다.
+     */
+    private ProfileOutput toOutput(UserProfile profile) {
+        UUID accountId = profile.getAccountId();
 
         ProfileOutput.Stats stats = new ProfileOutput.Stats(
                 visitLogRepository.countByAccountId(accountId),
+                // review 서비스를 세우면 GET /internal/reviews/count?accountId= 로 채움
                 null,
                 favoriteRepository.countByAccountId(accountId));
 
-        log.info("프로필을 수정했습니다: accountId={}", accountId);
-        return ProfileOutput.of(profile, stats);
+        return new ProfileOutput(
+                accountId,
+                profile.getNickname(),
+                presignOrNull(profile.getProfileImageUrl()),
+                profile.getDefaultPetId(),
+                stats);
+    }
+
+    private String presignOrNull(String key) {
+        return key == null ? null : storageProvider.presignDownload(key);
     }
 
     /**
@@ -183,7 +260,10 @@ public class UserProfileService {
     @Transactional(readOnly = true)
     public List<UserSummaryOutput> getSummaries(Collection<UUID> accountIds) {
         return userProfileRepository.findAllById(accountIds).stream()
-                .map(UserSummaryOutput::from)
+                .map(profile -> new UserSummaryOutput(
+                        profile.getAccountId(),
+                        profile.getNickname(),
+                        presignOrNull(profile.getProfileImageUrl())))
                 .toList();
     }
 

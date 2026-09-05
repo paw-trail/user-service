@@ -1,6 +1,5 @@
 package com.pawtrail.user.application.dto.output;
 
-import com.pawtrail.user.domain.model.UserProfile;
 import java.util.UUID;
 
 /**
@@ -15,16 +14,11 @@ import java.util.UUID;
  * @param accountId       누구인지입니다. 부르는 쪽이 이 값으로 자기 목록과 맞춥니다.
  * @param nickname        탈퇴한 사람은 "탈퇴한 사용자" 로 치환된 값이 나갑니다.
  *                        아직 설정하지 않은 사람은 null 입니다.
- * @param profileImageUrl 안 올렸거나 탈퇴했으면 null 입니다.
+ * @param profileImageUrl 서명된 주소입니다. 안 올렸으면 null 입니다.
+ *                        ★1시간 뒤 만료되므로 부르는 쪽이 이 응답을 캐시하면 안 됩니다.
+ *                        후기 목록을 캐시해 두면 그 뒤에 깨진 이미지가 뜹니다.
  */
 public record UserSummaryOutput(UUID accountId,
                                 String nickname,
                                 String profileImageUrl) {
-
-    public static UserSummaryOutput from(UserProfile profile) {
-        return new UserSummaryOutput(
-                profile.getAccountId(),
-                profile.getNickname(),
-                profile.getProfileImageUrl());
-    }
 }

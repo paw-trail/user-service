@@ -59,6 +59,22 @@ spring:
       # 이 테스트의 목적은 엔티티와 스키마 대조이고 리스너 동작은 실물로 확인함
       auto-startup: false
 
+app:
+  storage:
+    # config 저장소 2계층의 사본임
+    #
+    # 위에서 설정 서버를 껐으므로 이 값들이 하나도 안 내려옴
+    # StorageProperties 에 @NotBlank·@Positive 가 붙어 있어
+    # 비어 있으면 contextLoads 가 바인딩 단계에서 깨짐
+    #
+    # 실제 버킷을 부르지는 않음
+    # 서명을 만드는 것은 계산이라 통신이 없고, 테스트는 서명을 만들지도 않음
+    # 여기 값은 "형식이 맞는 값이 있다" 만 보이면 되므로 실제 이름을 그대로 적어 둠
+    bucket: pawtrail-media
+    region: ap-northeast-2
+    upload-expires-seconds: 600
+    download-expires-seconds: 3600
+
 eureka:
   client:
     # 테스트는 서비스 디스커버리에 참여하지 않음

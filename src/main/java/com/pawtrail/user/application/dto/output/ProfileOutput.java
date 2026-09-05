@@ -1,6 +1,5 @@
 package com.pawtrail.user.application.dto.output;
 
-import com.pawtrail.user.domain.model.UserProfile;
 import java.util.UUID;
 
 /**
@@ -9,6 +8,12 @@ import java.util.UUID;
  * stats 는 이 표에 없는 값이라 서비스가 따로 세어 넘깁니다.
  * 비정규화 컬럼을 두지 않는 이유는, 후기를 지웠을 때 user 가 그것을 알 방법이 없어
  * 값이 조용히 틀어지기 때문입니다.
+ *
+ * 사진은 저장된 키가 아니라 서명된 주소로 나갑니다.
+ * 버킷이 퍼블릭 액세스를 차단해 두어 서명 없이는 열리지 않기 때문입니다.
+ * 조립은 서비스가 하므로 여기에 from 이나 of 를 두지 않습니다.
+ * 엔티티만으로는 만들 수 없는 값이 둘(사진 주소, stats)이라
+ * 팩터리를 두면 그것들을 인자로 또 받아야 합니다.
  *
  * 이메일은 담지 않습니다.
  * auth 가 소유한 값이라 프론트가 필요하면 GET /auth/me 를 따로 부릅니다.
@@ -39,14 +44,5 @@ public record ProfileOutput(UUID accountId,
      * @param favoriteCount favorite 의 행 수입니다.
      */
     public record Stats(long visitCount, Long reviewCount, long favoriteCount) {
-    }
-
-    public static ProfileOutput of(UserProfile profile, Stats stats) {
-        return new ProfileOutput(
-                profile.getAccountId(),
-                profile.getNickname(),
-                profile.getProfileImageUrl(),
-                profile.getDefaultPetId(),
-                stats);
     }
 }

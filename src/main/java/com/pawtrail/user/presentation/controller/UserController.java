@@ -4,15 +4,18 @@ import com.pawtrail.common.response.CommonApiResponse;
 import com.pawtrail.common.security.annotation.CurrentUser;
 import com.pawtrail.common.security.principal.CustomUserPrincipal;
 import com.pawtrail.user.application.dto.output.ProfileOutput;
+import com.pawtrail.user.application.dto.output.UploadUrlOutput;
 import com.pawtrail.user.application.service.UserProfileService;
 import com.pawtrail.user.presentation.request.DefaultPetUpdateRequest;
 import com.pawtrail.user.presentation.request.ProfileUpdateRequest;
+import com.pawtrail.user.presentation.request.UploadUrlRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -71,6 +74,31 @@ public class UserController {
 
         ProfileOutput response =
                 userProfileService.updateProfile(principal.accountId(), request.toInput());
+        return ResponseEntity.ok(CommonApiResponse.success(response));
+    }
+
+    /**
+     * 프로필 사진을 올릴 주소를 발급합니다.
+     *
+     * 이 API 는 파일을 받지 않습니다. 주소만 돌려줍니다.
+     * 이름이 uploads 가 아니라 upload-url 인 이유가 그것입니다.
+     *
+     * 프론트가 할 일이 셋입니다.
+     *   ① 여기서 uploadUrl 과 fileUrl 을 받음
+     *   ② uploadUrl 로 파일을 PUT.  ★Content-Type 헤더를 요청한 값과 똑같이 보낼 것
+     *      서명에 그 값이 들어 있어 다르면 S3 가 403 을 냄
+     *   ③ fileUrl 을 PATCH /users/me 의 profileImageUrl 에 담아 보냄
+     *
+     * ②까지만 하고 ③을 안 하면 파일은 올라갔는데 프로필에 안 붙습니다.
+     * 키가 계정당 하나로 고정이라 다음에 올리면 그 자리에 덮어써집니다.
+     */
+    @PostMapping("/me/upload-url")
+    public ResponseEntity<CommonApiResponse<UploadUrlOutput>> issueUploadUrl(
+            @CurrentUser CustomUserPrincipal principal,
+            @Valid @RequestBody UploadUrlRequest request) {
+
+        UploadUrlOutput response =
+                userProfileService.issueUploadUrl(principal.accountId(), request.contentType());
         return ResponseEntity.ok(CommonApiResponse.success(response));
     }
 
