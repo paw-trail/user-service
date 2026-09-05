@@ -31,4 +31,9 @@ public class FavoriteRepositoryImpl implements FavoriteRepository {
     public void delete(Favorite favorite) {
         favoriteJpaRepository.delete(favorite);
     }
+
+    @Override
+    public long countByAccountId(UUID accountId) {
+        return favoriteJpaRepository.countByAccountId(accountId);
+    }
 }

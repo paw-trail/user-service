@@ -31,4 +31,9 @@ public class VisitLogRepositoryImpl implements VisitLogRepository {
     public void delete(VisitLog visitLog) {
         visitLogJpaRepository.delete(visitLog);
     }
+
+    @Override
+    public long countByAccountId(UUID accountId) {
+        return visitLogJpaRepository.countByAccountId(accountId);
+    }
 }
