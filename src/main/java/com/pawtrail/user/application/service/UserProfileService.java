@@ -7,6 +7,7 @@ import com.pawtrail.user.application.dto.output.ProfileOutput;
 import com.pawtrail.user.application.dto.output.UploadUrlOutput;
 import com.pawtrail.user.application.dto.output.UserSummaryOutput;
 import com.pawtrail.user.domain.model.UserProfile;
+import com.pawtrail.user.domain.provider.ReviewProvider;
 import com.pawtrail.user.domain.provider.StorageProvider;
 import com.pawtrail.user.domain.repository.FavoriteRepository;
 import com.pawtrail.user.domain.repository.UserProfileRepository;
@@ -41,6 +42,7 @@ public class UserProfileService {
     private final VisitLogRepository visitLogRepository;
     private final StorageProvider storageProvider;
     private final StorageProperties storageProperties;
+    private final ReviewProvider reviewProvider;
 
     /**
      * account.created 를 받아 프로필을 만듭니다.
@@ -199,17 +201,22 @@ public class UserProfileService {
      * 버킷이 퍼블릭 액세스를 차단해 두어 서명 없이는 안 열립니다.
      *
      * stats 셋 중 둘은 우리 표를 세고 reviewCount 만 review 서비스가 줍니다.
-     * 그 서비스가 아직 없어 지금은 null 입니다.
+     * 그 서비스가 아직 없어 실제로는 지금도 null 이 들어옵니다.
+     * 다만 null 을 박아 두던 것과 달리 이제는 호출해 보고 실패해서 null 인 것입니다.
+     * ReviewProvider 가 실패를 삼키고 null 을 돌려줍니다.
+     *
      * 명세도 "호출 실패 시 null" 로 정해 두었으므로 프론트가 이 상태를 다룹니다.
      * 통계 하나 때문에 마이페이지가 안 뜨면 안 됩니다.
+     *
+     * 실패를 여기서 받아 넘기는 것은 이 값에 한정된 판단입니다.
+     * 방문 기록의 판정처럼 틀린 값이 영구히 남는 자리에서는 요청 자체를 실패시킵니다.
      */
     private ProfileOutput toOutput(UserProfile profile) {
         UUID accountId = profile.getAccountId();
 
         ProfileOutput.Stats stats = new ProfileOutput.Stats(
                 visitLogRepository.countByAccountId(accountId),
-                // review 서비스를 세우면 GET /internal/reviews/count?accountId= 로 채움
-                null,
+                reviewProvider.countByAccountId(accountId),
                 favoriteRepository.countByAccountId(accountId));
 
         return new ProfileOutput(
@@ -241,7 +248,14 @@ public class UserProfileService {
      * 지금 막아도 화면이 막히지 않습니다.
      * pet 서비스가 없어 지정할 반려동물 자체가 존재하지 않습니다.
      *
-     * 외부 호출 기반을 세우는 이슈에서 이 블록을 검증 호출로 바꿉니다.
+     * TODO(pet 착수 시): 이 블록을 PetProvider 검증 호출로 바꿉니다.
+     *
+     * 외부 호출 기반이 선 뒤에도 열지 못했습니다.
+     * 기반이 있는 것과 검증할 대상이 있는 것이 다르기 때문입니다.
+     * 이 이슈가 부르는 셋(place · verdict · review)은 소유권 개념이 없는 조회이고,
+     * 여기서 물어야 하는 것은 "이 펫이 정말 이 사람 것인가" 입니다.
+     * 그것을 답해 줄 pet 서비스가 아직 없습니다.
+     *
      * 그때까지 열어 두면 검증을 붙이는 것을 잊어도 드러나지 않습니다.
      */
     @Transactional
