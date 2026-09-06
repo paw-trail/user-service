@@ -720,7 +720,7 @@ rootProject.name = 'place-service'
 공통 모듈 버전을 최신으로 맞춥니다.
 
 ```properties
-commonVersion=0.0.9
+commonVersion=0.0.13
 ```
 
 > **템플릿에 적힌 값이 최신이 아닐 수 있습니다.**
@@ -4595,7 +4595,7 @@ copy .env.example .env
 
 | 키 | 두는 곳 | 값 | 무엇을 하나 |
 |---|---|---|---|
-| `commonVersion` | `gradle.properties` | 예: `0.0.9` | 공통 모듈 버전 |
+| `commonVersion` | `gradle.properties` | 예: `0.0.13` | 공통 모듈 버전 |
 | `GPR_USER` · `GPR_TOKEN` | OS 환경변수 | GitHub 계정·토큰 | 공통 모듈 내려받기 |
 | `CONFIG_HOST` | 환경변수 | 기본값 `localhost` | 설정 서버 주소. 컨테이너와 AWS 에서만 지정 |
 | `DB_HOST` | 환경변수 | `localhost` | config 3계층의 `app.datasource.host` 가 참조 |
@@ -4821,7 +4821,7 @@ dependencies {
 버전은 `gradle.properties` 에 한 줄로 둡니다.
 
 ```properties
-commonVersion=0.0.9
+commonVersion=0.0.13
 ```
 
 > 버전을 `build.gradle` 에 직접 적지 않은 이유는 **고칠 자리를 파일 하나로
