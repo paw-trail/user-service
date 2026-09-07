@@ -1,8 +1,10 @@
 package com.pawtrail.user.infrastructure.persistence.jpa;
 
 import com.pawtrail.user.domain.model.Favorite;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -49,4 +51,20 @@ public interface FavoriteJpaRepository extends JpaRepository<Favorite, UUID> {
      */
     @Query("select f.accountId from Favorite f where f.placeId = :placeId order by f.id")
     Page<UUID> findAccountIdsByPlaceId(@Param("placeId") UUID placeId, Pageable pageable);
+
+    /**
+     * 주어진 장소 중 그 사람이 담아 둔 것의 place_id 만 돌려줍니다.
+     *
+     * 파생 쿼리로는 특정 컬럼만 고를 수 없어 JPQL 을 씁니다.
+     *
+     * 정렬을 걸지 않습니다.
+     * 부르는 쪽이 Set 으로 받아 contains 로만 쓰므로 순서에 뜻이 없습니다.
+     * 페이징도 하지 않아 순서가 흔들려 생기는 문제도 없습니다.
+     */
+    @Query("""
+            select f.placeId from Favorite f
+            where f.accountId = :accountId and f.placeId in :placeIds
+            """)
+    Set<UUID> findPlaceIdsByAccountIdAndPlaceIdIn(
+            @Param("accountId") UUID accountId, @Param("placeIds") Collection<UUID> placeIds);
 }

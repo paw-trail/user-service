@@ -3,8 +3,10 @@ package com.pawtrail.user.infrastructure.persistence;
 import com.pawtrail.user.domain.model.Favorite;
 import com.pawtrail.user.domain.repository.FavoriteRepository;
 import com.pawtrail.user.infrastructure.persistence.jpa.FavoriteJpaRepository;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -53,5 +55,12 @@ public class FavoriteRepositoryImpl implements FavoriteRepository {
     @Override
     public Page<UUID> findAccountIdsByPlaceId(UUID placeId, Pageable pageable) {
         return favoriteJpaRepository.findAccountIdsByPlaceId(placeId, pageable);
+    }
+
+    @Override
+    public Set<UUID> findPlaceIdsByAccountIdAndPlaceIdIn(
+            UUID accountId, Collection<UUID> placeIds) {
+
+        return favoriteJpaRepository.findPlaceIdsByAccountIdAndPlaceIdIn(accountId, placeIds);
     }
 }

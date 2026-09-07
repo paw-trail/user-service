@@ -1,8 +1,10 @@
 package com.pawtrail.user.domain.repository;
 
 import com.pawtrail.user.domain.model.Favorite;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -75,4 +77,20 @@ public interface FavoriteRepository {
     // 페이지를 나눠 가져가는데 순서가 바뀌면
     // 같은 계정이 두 페이지에 나오거나 아예 빠져 알림이 두 번 가거나 안 감
     Page<UUID> findAccountIdsByPlaceId(UUID placeId, Pageable pageable);
+
+    // 주어진 장소 중 그 사람이 담아 둔 것의 place_id 만 돌려줌
+    //
+    // GET /api/v1/visits 가 씀
+    // 방문 기록 카드의 하트를 채울지 비울지 판단하는 값(isFavorite)이 이것임
+    //
+    // 즐겨찾기 화면에는 이 조회가 필요 없음
+    // 거기는 하트가 해제만 하므로 목록에 있다는 것이 곧 담겨 있다는 뜻임
+    // 방문 기록은 하트가 추가와 해제를 다 해서 처음 그릴 때 상태를 알아야 함
+    //
+    // 장소마다 부르지 않고 한 번에 모아 부름
+    // uq_favorite_account_place 가 (account_id, place_id) 라 이 조회가 그 인덱스를 그대로 탐
+    //
+    // 엔티티가 아니라 place_id 만 돌려주는 이유
+    // 부르는 쪽이 하는 일이 contains 하나뿐임
+    Set<UUID> findPlaceIdsByAccountIdAndPlaceIdIn(UUID accountId, Collection<UUID> placeIds);
 }
