@@ -1,5 +1,7 @@
 package com.pawtrail.user.domain.provider;
 
+import java.util.Collection;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -11,6 +13,10 @@ import java.util.UUID;
  * StorageProvider 와 같은 자리에 두지만 성격이 하나 다릅니다.
  * 그쪽은 바깥 시스템(S3)이고 이쪽은 우리가 만든 다른 서비스입니다.
  * 그래서 구현이 external 이 아니라 internal 아래에 놓입니다.
+ *
+ * 메서드 둘의 기준이 다릅니다.
+ * 하나는 계정 기준이고 하나는 장소 기준입니다.
+ * 부르는 서비스가 같아 한 인터페이스에 두었습니다.
  */
 public interface ReviewProvider {
 
@@ -29,4 +35,21 @@ public interface ReviewProvider {
      * 그래서 실패 처리를 공통 모듈에 두지 않고 부르는 쪽마다 정합니다.
      */
     Long countByAccountId(UUID accountId);
+
+    /**
+     * 여러 장소의 평점 평균을 한 번에 받아옵니다.
+     *
+     * 즐겨찾기 카드의 별점이 이 값입니다.
+     * 평점은 review 가 소유합니다.
+     * place 표에는 평점 컬럼이 아예 없고, 검색 색인이 가진 값은 하루 한 번 동기화하는
+     * 사본이라 목록에서 그것을 읽으면 우리가 남의 캐시를 들여다보는 모양이 됩니다.
+     *
+     * 후기가 하나도 없는 장소는 결과에서 빠집니다.
+     * 평균을 낼 것이 없어 0 도 아니고 없는 것이며,
+     * 부르는 쪽은 키가 없으면 별점을 표시하지 않습니다.
+     *
+     * 호출이 실패하면 빈 Map 을 돌려줍니다. 예외를 던지지 않습니다.
+     * 별점은 없어도 카드가 성립합니다. countByAccountId 와 같은 기준입니다.
+     */
+    Map<UUID, Double> findRatingsByPlaceIds(Collection<UUID> placeIds);
 }
