@@ -1,6 +1,7 @@
 package com.pawtrail.user.domain.repository;
 
 import com.pawtrail.user.domain.model.VisitLog;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -66,4 +67,20 @@ public interface VisitLogRepository {
     // 앞당겨도 그 예외가 트랜잭션에 rollback-only 를 남겨 커밋이 거부됨
     // 즐겨찾기에서 실물로 겪고 조회 방식으로 바꾼 자리임
     Optional<VisitLog> findByItineraryStopId(UUID itineraryStopId);
+
+    // 그 사람의 그날 방문 기록을 이른 것부터 돌려줌
+    //
+    // 하루 요약이 씀
+    // 그날 어디를 다녀왔는지가 요약 문장의 뼈대임
+    //
+    // 위의 전체 목록 조회와 나눠 두는 이유
+    // 그쪽은 날짜가 최신 먼저이고 하루 안이 시간 순이라 정렬 축이 둘임
+    // 여기는 하루치라 시간 순 하나면 되고, 한 날을 요약하는데 전체를 읽을 이유도 없음
+    //
+    // 끝 경계를 포함하지 않음
+    // BETWEEN 은 양끝을 포함해 다음 날 00:00 짜리가 함께 걸림
+    // 방문 시각은 일정에서 복사되는데 일정은 시각을 안 정하면 그날 00:00 이 들어감
+    List<VisitLog> findAllByAccountIdAndDay(UUID accountId,
+                                            LocalDateTime dayStart,
+                                            LocalDateTime dayEnd);
 }

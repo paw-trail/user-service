@@ -3,6 +3,7 @@ package com.pawtrail.user.infrastructure.persistence;
 import com.pawtrail.user.domain.model.VisitLog;
 import com.pawtrail.user.domain.repository.VisitLogRepository;
 import com.pawtrail.user.infrastructure.persistence.jpa.VisitLogJpaRepository;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -51,5 +52,12 @@ public class VisitLogRepositoryImpl implements VisitLogRepository {
     @Override
     public Optional<VisitLog> findByItineraryStopId(UUID itineraryStopId) {
         return visitLogJpaRepository.findByItineraryStopId(itineraryStopId);
+    }
+
+    @Override
+    public List<VisitLog> findAllByAccountIdAndDay(UUID accountId,
+                                                   LocalDateTime dayStart,
+                                                   LocalDateTime dayEnd) {
+        return visitLogJpaRepository.findAllByAccountIdAndDay(accountId, dayStart, dayEnd);
     }
 }

@@ -1,6 +1,7 @@
 package com.pawtrail.user.infrastructure.persistence.jpa;
 
 import com.pawtrail.user.domain.model.VisitLog;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -39,4 +40,23 @@ public interface VisitLogJpaRepository extends JpaRepository<VisitLog, UUID> {
             order by function('date', v.visitedAt) desc, v.visitedAt asc
             """)
     List<VisitLog> findAllByAccountIdOrderByVisitedAt(@Param("accountId") UUID accountId);
+
+    /**
+     * 그 사람의 그날 방문 기록을 이른 것부터 돌려줍니다.
+     *
+     * 파생 쿼리로 쓰면 메서드 이름이 조건 셋과 정렬을 전부 담아 읽기 어려워집니다.
+     *
+     * 끝 경계를 포함하지 않습니다.
+     * BETWEEN 은 양끝을 포함해 다음 날 00:00 짜리가 함께 걸립니다.
+     */
+    @Query("""
+            select v from VisitLog v
+            where v.accountId = :accountId
+              and v.visitedAt >= :dayStart
+              and v.visitedAt < :dayEnd
+            order by v.visitedAt asc
+            """)
+    List<VisitLog> findAllByAccountIdAndDay(@Param("accountId") UUID accountId,
+                                            @Param("dayStart") LocalDateTime dayStart,
+                                            @Param("dayEnd") LocalDateTime dayEnd);
 }

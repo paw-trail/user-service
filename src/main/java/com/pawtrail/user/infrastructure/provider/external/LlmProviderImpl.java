@@ -57,10 +57,15 @@ public class LlmProviderImpl implements LlmProvider {
     private static final String SYSTEM_PROMPT = """
             너는 반려동물과 함께한 하루의 나들이 기록을 요약한다.
 
-            입력으로 그날 다녀온 장소들과 시각, 사용자가 남긴 메모,
-            후기가 있으면 그 본문과 별점이 주어진다.
+            입력은 두 목록으로 나뉜다.
+            visited 는 실제로 다녀온 곳이고, planned 는 담아만 두고 다녀왔는지 알 수 없는 곳이다.
+            각 장소에는 시각과 사용자가 남긴 메모가 있고,
+            후기가 있으면 그 본문과 별점이 따로 주어진다.
 
             규칙
+            - planned 에 있는 곳을 다녀왔다고 쓰지 않는다.
+              "가려던" 처럼 계획으로만 쓰거나, 쓸 말이 없으면 언급하지 않는다.
+            - visited 가 비어 있으면 다녀온 곳이 없는 하루다. 계획만 이야기한다.
             - 공백을 포함해 200자를 넘기지 않는다.
             - "~했어요" 로 끝나는 부드러운 존댓말로 통일한다.
             - 입력에 없는 사실을 지어내지 않는다.
@@ -173,6 +178,10 @@ public class LlmProviderImpl implements LlmProvider {
      * 문장으로 풀어 쓰면 그 문장이 이미 요약이라 모델이 그대로 베낄 여지가 생기고,
      * 값이 비었을 때 "없음" 같은 말을 넣게 되어 그것이 결과에 새어 나옵니다.
      *
+     * 다녀온 곳과 담아 둔 곳을 다른 이름의 목록으로 넘깁니다.
+     * 한 목록에 담고 표시만 다르게 하면 모델이 그 표시를 흘렸을 때
+     * 안 간 곳이 다녀온 것으로 쓰입니다.
+     *
      * 직렬화가 실패하면 예외가 나가고 부르는 메서드가 잡습니다.
      * 여기서 따로 다루지 않는 것은 결과가 같기 때문입니다.
      */
@@ -180,7 +189,8 @@ public class LlmProviderImpl implements LlmProvider {
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("visitDate", data.visitDate().toString());
-            payload.put("visits", data.visits());
+            payload.put("visited", data.visited());
+            payload.put("planned", data.planned());
             payload.put("reviews", toReviewPayload(data.reviews()));
             return objectMapper.writeValueAsString(payload);
         } catch (Exception e) {

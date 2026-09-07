@@ -95,4 +95,35 @@ public class DailySummary extends BaseEntity {
         }
         return new DailySummary(accountId, visitDate.atStartOfDay(), summary, generatedAt);
     }
+
+    /**
+     * 요약문을 새로 씁니다.
+     *
+     * 사용자가 갱신 버튼을 누르면 부릅니다.
+     * 같은 날짜의 요약은 하루에 한 줄이라 새로 만드는 것이 아니라 이 행을 고칩니다.
+     *
+     * 저장할 때 save 를 다시 부르지 않습니다.
+     *
+     * 그 방법이 안 되는 이유가 있습니다.
+     * 식별자가 이미 차 있는 객체를 넘기면 병합으로 처리되는데,
+     * 새로 만든 객체는 생성 시각이 비어 있고 그 값이 기존 행을 덮어씁니다.
+     * 생성 시각은 처음 저장할 때만 채워지고 병합에서는 채워지지 않아,
+     * 반드시 값이 있어야 하는 컬럼이 비면서 갱신이 실패합니다.
+     *
+     * 첫 요약은 새로 만드는 것이라 멀쩡히 되고 갱신할 때만 터지므로,
+     * 갱신을 해 보지 않으면 드러나지 않는 자리입니다.
+     *
+     * 여기서는 값이 성립하는지만 봅니다.
+     * 누가 고칠 수 있는지나 얼마나 자주 고칠 수 있는지는 서비스가 판단합니다.
+     */
+    public void update(String summary, LocalDateTime generatedAt) {
+        if (summary == null || summary.isBlank()) {
+            throw new IllegalArgumentException("summary 는 필수입니다.");
+        }
+        if (generatedAt == null) {
+            throw new IllegalArgumentException("generatedAt 은 필수입니다.");
+        }
+        this.summary = summary;
+        this.generatedAt = generatedAt;
+    }
 }
