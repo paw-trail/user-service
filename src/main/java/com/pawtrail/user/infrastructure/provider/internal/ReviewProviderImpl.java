@@ -2,8 +2,12 @@ package com.pawtrail.user.infrastructure.provider.internal;
 
 import com.pawtrail.common.response.CommonApiResponse;
 import com.pawtrail.user.domain.provider.ReviewProvider;
+import com.pawtrail.user.domain.provider.dto.ReviewData;
 import com.pawtrail.user.infrastructure.provider.internal.dto.ReviewCountResponse;
+import com.pawtrail.user.infrastructure.provider.internal.dto.ReviewResponse;
 import com.pawtrail.user.infrastructure.provider.internal.dto.ReviewStatResponse;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -166,5 +170,67 @@ public class ReviewProviderImpl implements ReviewProvider {
             log.warn("평점 응답의 장소 식별자가 UUID 형식이 아닙니다: {}", value);
             return null;
         }
+    }
+
+    /**
+     * 그 사람이 그 기간에 쓴 후기를 받아옵니다.
+     *
+     * 실패하면 빈 목록을 돌려줍니다.
+     * 후기가 없는 것과 못 받아온 것이 결과적으로 같기 때문입니다.
+     * 둘 다 후기 없이 문장을 만들면 되고 그 문장도 쓸 만합니다.
+     *
+     * 지금은 review 서비스가 없어 언제나 이 경로로 옵니다.
+     * 검증은 스텁 서버로 하며, 그쪽에 이 경로를 더해 두었습니다.
+     */
+    @Override
+    public List<ReviewData> findByAccountIdAndPeriod(UUID accountId, LocalDate from, LocalDate to) {
+        try {
+            CommonApiResponse<List<ReviewResponse>> response = restClient.get()
+                    .uri(builder -> builder.path("/internal/reviews")
+                            .queryParam("accountId", accountId)
+                            .queryParam("from", from)
+                            .queryParam("to", to)
+                            .build())
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<>() {});
+
+            if (response == null || response.getData() == null) {
+                log.warn("후기 응답이 비어 있습니다: accountId={}, {} ~ {}", accountId, from, to);
+                return List.of();
+            }
+
+            return toReviewData(response.getData());
+
+        } catch (Exception e) {
+            log.warn("후기를 받아오지 못했습니다: accountId={}, {} ~ {}, reason={}",
+                    accountId, from, to, e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * 응답을 도메인 타입으로 바꿉니다.
+     *
+     * 식별자나 날짜의 형식이 어긋난 원소는 건너뜁니다.
+     * 요약 재료라 하나가 빠져도 문장은 만들어지고,
+     * 하나 때문에 그날 요약 자체를 못 만들 이유가 없습니다.
+     */
+    private List<ReviewData> toReviewData(List<ReviewResponse> responses) {
+        List<ReviewData> result = new ArrayList<>();
+
+        for (ReviewResponse response : responses) {
+            try {
+                result.add(new ReviewData(
+                        UUID.fromString(response.reviewId()),
+                        UUID.fromString(response.placeId()),
+                        LocalDate.parse(response.visitedAt()),
+                        response.rating(),
+                        response.content(),
+                        response.petBreedAtVisit()));
+            } catch (Exception e) {
+                log.warn("후기 하나를 읽지 못해 건너뜁니다: reviewId={}", response.reviewId());
+            }
+        }
+        return result;
     }
 }
