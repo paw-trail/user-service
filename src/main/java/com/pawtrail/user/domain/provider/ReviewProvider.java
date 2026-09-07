@@ -1,6 +1,9 @@
 package com.pawtrail.user.domain.provider;
 
+import com.pawtrail.user.domain.provider.dto.ReviewData;
+import java.time.LocalDate;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -52,4 +55,27 @@ public interface ReviewProvider {
      * 별점은 없어도 카드가 성립합니다. countByAccountId 와 같은 기준입니다.
      */
     Map<UUID, Double> findRatingsByPlaceIds(Collection<UUID> placeIds);
+
+    /**
+     * 그 사람이 그 기간에 쓴 후기를 받아옵니다.
+     *
+     * 하루 요약의 재료입니다.
+     * 앞의 두 메서드는 숫자만 받아 왔지만 이것은 본문과 별점을 받습니다.
+     *
+     * 기간을 받는 것은 명세가 그렇게 정해 두었기 때문입니다.
+     * 지금 부르는 쪽은 하루치만 필요해 시작과 끝에 같은 날짜를 넣습니다.
+     *
+     * 후기가 없어도 요약은 만들어집니다.
+     * 장소와 시각과 메모만으로도 그날이 어땠는지는 쓸 수 있고,
+     * 명세도 그 경우를 정상으로 두었습니다.
+     *
+     * 호출이 실패하면 빈 목록을 돌려줍니다. 예외를 던지지 않습니다.
+     * 후기가 없는 것과 못 받아온 것이 결과적으로 같기 때문입니다.
+     * 둘 다 후기 없이 문장을 만들면 되고, 그 문장도 쓸 만합니다.
+     *
+     * 장소나 판정과 다른 점입니다.
+     * 장소는 이름이 없으면 카드가 성립하지 않아 목록 전체를 실패시켰지만,
+     * 여기는 없어도 결과물이 나옵니다.
+     */
+    List<ReviewData> findByAccountIdAndPeriod(UUID accountId, LocalDate from, LocalDate to);
 }
