@@ -66,16 +66,39 @@ public class VerdictProviderImpl implements VerdictProvider {
      */
     @Override
     public Map<UUID, VerdictData> findByPlaceIds(Collection<UUID> placeIds, UUID petId) {
-        if (placeIds == null || placeIds.isEmpty() || petId == null) {
+        if (petId == null) {
+            return Map.of();
+        }
+
+        Map<UUID, Map<UUID, VerdictData>> byPet =
+                findByPlaceIdsForPets(placeIds, List.of(petId));
+
+        Map<UUID, VerdictData> result = new LinkedHashMap<>();
+        for (Map.Entry<UUID, Map<UUID, VerdictData>> entry : byPet.entrySet()) {
+            VerdictData data = entry.getValue().get(petId);
+            if (data != null) {
+                result.put(entry.getKey(), data);
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public Map<UUID, Map<UUID, VerdictData>> findByPlaceIdsForPets(
+            Collection<UUID> placeIds, Collection<UUID> petIds) {
+
+        if (placeIds == null || placeIds.isEmpty() || petIds == null || petIds.isEmpty()) {
             return Map.of();
         }
 
         List<UUID> targets = new ArrayList<>(placeIds);
-        Map<UUID, VerdictData> result = new LinkedHashMap<>();
+        List<UUID> pets = new ArrayList<>(petIds);
+        Map<UUID, Map<UUID, VerdictData>> result = new LinkedHashMap<>();
 
         for (int from = 0; from < targets.size(); from += BATCH_SIZE) {
             int to = Math.min(from + BATCH_SIZE, targets.size());
-            Map<UUID, VerdictData> chunk = requestChunk(targets.subList(from, to), petId);
+            Map<UUID, Map<UUID, VerdictData>> chunk =
+                    requestChunk(targets.subList(from, to), pets);
 
             if (chunk == null) {
                 return Map.of();
@@ -93,13 +116,14 @@ public class VerdictProviderImpl implements VerdictProvider {
      * null 은 "물어보지 못했다" 입니다.
      * 부르는 쪽이 앞엣것은 그대로 두고 뒤엣것은 전체를 포기합니다.
      */
-    private Map<UUID, VerdictData> requestChunk(List<UUID> placeIds, UUID petId) {
+    private Map<UUID, Map<UUID, VerdictData>> requestChunk(
+            List<UUID> placeIds, List<UUID> petIds) {
         try {
             CommonApiResponse<VerdictBatchResponse> response = restClient.post()
                     .uri("/internal/verdicts/batch")
                     .body(Map.of(
                             "placeIds", placeIds.stream().map(UUID::toString).toList(),
-                            "petIds", List.of(petId.toString())))
+                            "petIds", petIds.stream().map(UUID::toString).toList()))
                     .retrieve()
                     .body(new ParameterizedTypeReference<>() {});
 
@@ -112,8 +136,8 @@ public class VerdictProviderImpl implements VerdictProvider {
             return toMap(response.getData().results());
 
         } catch (Exception e) {
-            log.warn("판정을 받아오지 못했습니다: 장소 {}건, petId={}, reason={}",
-                    placeIds.size(), petId, e.getMessage());
+            log.warn("판정을 받아오지 못했습니다: 장소 {}건, 펫 {}마리, reason={}",
+                    placeIds.size(), petIds.size(), e.getMessage());
             return null;
         }
     }
@@ -121,17 +145,20 @@ public class VerdictProviderImpl implements VerdictProvider {
     /**
      * 응답을 도메인 타입으로 바꿉니다.
      *
-     * 마리별 판정 배열에서 하나를 꺼내는 일이 여기서 일어납니다.
+     * 마리별 판정 배열을 펫 식별자로 찾을 수 있게 펴는 일이 여기서 일어납니다.
      * 그것이 verdict 의 응답 형태를 아는 일이라 도메인이 할 일이 아닙니다.
      *
-     * 우리가 넘긴 반려동물이 한 마리이므로 원소도 하나입니다.
      * 배열이 비어 있으면 그 장소의 판정이 없는 것이라 결과에서 뺍니다.
+     * 판정 값이나 펫 식별자가 없는 원소도 건너뜁니다.
+     *
+     * requiredItems 는 장소마다 하나이고 마리별로 갈리지 않습니다.
+     * 그래서 그 장소의 모든 원소가 같은 목록을 나눠 가집니다.
      *
      * requiredItems 가 null 로 오면 빈 목록으로 바꿉니다.
      * 도메인 쪽에서 null 인지 매번 확인하지 않게 하기 위해서입니다.
      */
-    private Map<UUID, VerdictData> toMap(List<VerdictBatchResponse.Result> results) {
-        Map<UUID, VerdictData> map = new LinkedHashMap<>();
+    private Map<UUID, Map<UUID, VerdictData>> toMap(List<VerdictBatchResponse.Result> results) {
+        Map<UUID, Map<UUID, VerdictData>> map = new LinkedHashMap<>();
 
         for (VerdictBatchResponse.Result result : results) {
             UUID placeId = parseUuidOrNull(result.placeId());
@@ -144,16 +171,22 @@ public class VerdictProviderImpl implements VerdictProvider {
                 continue;
             }
 
-            String verdict = verdicts.get(0).verdict();
-            if (verdict == null) {
-                continue;
-            }
-
             List<String> requiredItems = result.requiredItems() == null
                     ? List.of()
                     : result.requiredItems();
 
-            map.put(placeId, new VerdictData(verdict, requiredItems));
+            Map<UUID, VerdictData> byPet = new LinkedHashMap<>();
+            for (VerdictBatchResponse.PetVerdict petVerdict : verdicts) {
+                UUID petId = parseUuidOrNull(petVerdict.petId());
+                if (petId == null || petVerdict.verdict() == null) {
+                    continue;
+                }
+                byPet.put(petId, new VerdictData(petVerdict.verdict(), requiredItems));
+            }
+
+            if (!byPet.isEmpty()) {
+                map.put(placeId, byPet);
+            }
         }
         return map;
     }
