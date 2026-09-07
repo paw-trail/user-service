@@ -2,6 +2,10 @@ package com.pawtrail.user.infrastructure.persistence.jpa;
 
 import com.pawtrail.user.domain.model.DailySummary;
 import com.pawtrail.user.domain.model.DailySummaryId;
+import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.List;
+import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**
@@ -12,4 +16,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
  * 이 표만 기본 키가 둘이기 때문입니다.
  */
 public interface DailySummaryJpaRepository extends JpaRepository<DailySummary, DailySummaryId> {
+
+    List<DailySummary> findByAccountIdAndVisitDateIn(UUID accountId, Collection<LocalDateTime> visitDates);
 }

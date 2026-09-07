@@ -4,7 +4,11 @@ import com.pawtrail.user.domain.model.DailySummary;
 import com.pawtrail.user.domain.model.DailySummaryId;
 import com.pawtrail.user.domain.repository.DailySummaryRepository;
 import com.pawtrail.user.infrastructure.persistence.jpa.DailySummaryJpaRepository;
+import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
@@ -29,5 +33,12 @@ public class DailySummaryRepositoryImpl implements DailySummaryRepository {
     @Override
     public Optional<DailySummary> findById(DailySummaryId id) {
         return dailySummaryJpaRepository.findById(id);
+    }
+
+    @Override
+    public List<DailySummary> findByAccountIdAndVisitDateIn(
+            UUID accountId, Collection<LocalDateTime> visitDates) {
+
+        return dailySummaryJpaRepository.findByAccountIdAndVisitDateIn(accountId, visitDates);
     }
 }

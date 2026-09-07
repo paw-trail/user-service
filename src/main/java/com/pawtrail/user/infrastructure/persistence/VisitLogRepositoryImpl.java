@@ -3,6 +3,7 @@ package com.pawtrail.user.infrastructure.persistence;
 import com.pawtrail.user.domain.model.VisitLog;
 import com.pawtrail.user.domain.repository.VisitLogRepository;
 import com.pawtrail.user.infrastructure.persistence.jpa.VisitLogJpaRepository;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -35,5 +36,20 @@ public class VisitLogRepositoryImpl implements VisitLogRepository {
     @Override
     public long countByAccountId(UUID accountId) {
         return visitLogJpaRepository.countByAccountId(accountId);
+    }
+
+    @Override
+    public List<VisitLog> findAllByAccountIdOrderByVisitedAt(UUID accountId) {
+        return visitLogJpaRepository.findAllByAccountIdOrderByVisitedAt(accountId);
+    }
+
+    @Override
+    public Optional<VisitLog> findByIdAndAccountId(UUID id, UUID accountId) {
+        return visitLogJpaRepository.findByIdAndAccountId(id, accountId);
+    }
+
+    @Override
+    public Optional<VisitLog> findByItineraryStopId(UUID itineraryStopId) {
+        return visitLogJpaRepository.findByItineraryStopId(itineraryStopId);
     }
 }

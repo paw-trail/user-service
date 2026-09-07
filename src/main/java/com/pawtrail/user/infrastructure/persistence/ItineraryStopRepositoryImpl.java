@@ -31,4 +31,9 @@ public class ItineraryStopRepositoryImpl implements ItineraryStopRepository {
     public void delete(ItineraryStop itineraryStop) {
         itineraryStopJpaRepository.delete(itineraryStop);
     }
+
+    @Override
+    public Optional<ItineraryStop> findByIdAndAccountId(UUID id, UUID accountId) {
+        return itineraryStopJpaRepository.findByIdAndAccountId(id, accountId);
+    }
 }

@@ -1,6 +1,7 @@
 package com.pawtrail.user.infrastructure.persistence.jpa;
 
 import com.pawtrail.user.domain.model.ItineraryStop;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -9,4 +10,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
  * 이 파일은 도메인이 보지 않습니다.
  */
 public interface ItineraryStopJpaRepository extends JpaRepository<ItineraryStop, UUID> {
+
+    Optional<ItineraryStop> findByIdAndAccountId(UUID id, UUID accountId);
 }
