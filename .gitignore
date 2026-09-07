@@ -49,3 +49,11 @@ out/
 cookies.txt
 login.json
 *.json.tmp
+
+# 요청 본문을 담아 -d "@파일" 로 보내는 임시 파일임
+# PowerShell 이 -d '{"..."}' 의 따옴표를 먹어서 파일로 만들어 보내야 함
+# 루트에만 걸어 소스 트리 안의 json 은 건드리지 않음
+/fav*.json
+/pet*.json
+/visit*.json
+/itinerary*.json
