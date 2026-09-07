@@ -1,6 +1,7 @@
 package com.pawtrail.user.infrastructure.persistence.jpa;
 
 import com.pawtrail.user.domain.model.UserProfile;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -34,4 +35,19 @@ public interface UserProfileJpaRepository extends JpaRepository<UserProfile, UUI
     @Query(value = "SELECT EXISTS(SELECT 1 FROM user_profile WHERE account_id = :accountId)",
             nativeQuery = true)
     boolean existsIncludingDeleted(@Param("accountId") UUID accountId);
+
+    /**
+     * 탈퇴한 것까지 포함해 프로필을 찾아옵니다.
+     *
+     * 네이티브 쿼리인 이유는 위 existsIncludingDeleted 와 같습니다.
+     * @SQLRestriction 이 하이버네이트가 만드는 조회에 deleted_at IS NULL 을 덧붙이므로
+     * findById 로는 삭제 표시 행이 보이지 않습니다.
+     *
+     * 존재만 보는 쪽과 달리 엔티티를 그대로 돌려받습니다.
+     * 탈퇴 처리가 이 엔티티에 익명화를 걸고 그 변경이 커밋 시점에 반영되어야 하기 때문입니다.
+     * 네이티브 쿼리로 읽어도 영속성 컨텍스트에 올라가므로 변경 감지가 그대로 걸립니다.
+     */
+    @Query(value = "SELECT * FROM user_profile WHERE account_id = :accountId",
+            nativeQuery = true)
+    Optional<UserProfile> findByIdIncludingDeleted(@Param("accountId") UUID accountId);
 }

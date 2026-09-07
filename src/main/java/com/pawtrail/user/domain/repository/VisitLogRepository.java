@@ -83,4 +83,9 @@ public interface VisitLogRepository {
     List<VisitLog> findAllByAccountIdAndDay(UUID accountId,
                                             LocalDateTime dayStart,
                                             LocalDateTime dayEnd);
+    // 그 계정의 방문 기록 을 한 번에 지움
+    //
+    // 탈퇴 처리가 씀
+    // 반환은 지운 행 수임, 이벤트 소비는 응답이 없어 로그가 유일한 흔적이라 남겨 둠
+    int deleteAllByAccountId(UUID accountId);
 }

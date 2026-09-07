@@ -47,4 +47,19 @@ public interface UserProfileRepository {
     // 부르는 쪽이 알아야 하는 것은 있는지 없는지뿐이고,
     // 삭제 표시 행은 account_id 말고 담긴 값이 없어 꺼내 봐야 쓸 것이 없음
     boolean existsIncludingDeleted(UUID accountId);
+
+    // 탈퇴한 것까지 포함해 그 계정의 프로필을 찾음
+    //
+    // 탈퇴 처리가 씀
+    // 프로필이 놓일 수 있는 상태가 셋인데 조회 한 번으로 갈리게 하려고 둠
+    //   비어 있음             행이 아예 없음, 순서 역전이라 삭제 표시 행을 만들어야 함
+    //   isDeleted 가 true    이미 탈퇴 표시가 있음
+    //   그 밖                 정상, 익명화하고 삭제 표시를 남기면 됨
+    //
+    // 위 findById 로는 뒤의 둘이 똑같이 비어 있는 Optional 로 보임
+    // existsIncludingDeleted 와 조합해도 갈리기는 하나 조회가 두 번이 되고,
+    // 정상 경로에서만 엔티티가 나와 갈래마다 다루는 모양이 달라짐
+    //
+    // 돌려받은 엔티티는 영속 상태라 값을 고치면 커밋 시점에 반영됨
+    Optional<UserProfile> findByIdIncludingDeleted(UUID accountId);
 }

@@ -29,6 +29,17 @@ import org.hibernate.annotations.SQLRestriction;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserProfile extends BaseEntity {
 
+    // 탈퇴할 때 닉네임 자리에 넣는 값임
+    //
+    // 화면에 보이라고 두는 값이 아님
+    // 탈퇴한 프로필은 @SQLRestriction 때문에 어느 조회에도 안 걸림
+    // auth 가 이메일과 제공자 식별자를 끊는 것과 짝을 맞춰 신원을 지우는 것이 목적임
+    //
+    // null 로 비우지 않는 이유
+    // 이 컬럼의 null 은 이미 "아직 설정 안 함" 이라는 뜻을 가지고 있어
+    // 비우면 소셜 가입 직후와 탈퇴 후가 같은 모양이 됨
+    private static final String WITHDRAWN_NICKNAME = "탈퇴한 사용자";
+
     // 기본 키이자 auth 가 만든 값임
     //
     // 다른 스물두 개 표와 달리 애플리케이션이 만들지 않음
@@ -126,5 +137,61 @@ public class UserProfile extends BaseEntity {
      */
     public void changeDefaultPet(UUID petId) {
         this.defaultPetId = petId;
+    }
+
+    /**
+     * 탈퇴한 계정의 신원을 지우고 삭제 표시를 남깁니다.
+     *
+     * 세 가지를 함께 합니다. 닉네임을 치환하고, 사진 주소를 비우고, 삭제 시각을 찍습니다.
+     * 하나로 묶은 것은 셋이 항상 같이 일어나기 때문입니다.
+     * 나눠 두면 부르는 쪽이 세 줄을 순서대로 불러야 하고, 하나를 빠뜨려도 오류가 나지 않습니다.
+     *
+     * changeNickname 과 changeProfileImageUrl 을 쓰지 않습니다.
+     * 그 둘은 부르는 조건이 서로 달라 나눠 둔 것인데,
+     * 여기는 조건이 아니라 둘을 항상 함께 바꾸는 동작입니다.
+     *
+     * 사진 파일 자체는 여기서 지우지 않습니다.
+     * 엔티티가 객체 저장소를 알면 계층이 무너지고, 그 삭제는 되돌릴 수 없어
+     * 트랜잭션이 커밋된 뒤에 따로 해야 합니다.
+     *
+     * 이미 삭제 표시가 있으면 시각이 덮이지 않습니다. BaseEntity 가 막습니다.
+     *
+     * @param deletedBy 삭제자입니다. 이벤트 소비 경로라 실제로는 시스템 이름이 들어옵니다.
+     */
+    public void anonymize(String deletedBy) {
+        this.nickname = WITHDRAWN_NICKNAME;
+        this.profileImageUrl = null;
+        delete(deletedBy);
+    }
+
+    /**
+     * 프로필이 없는 계정에 대해 삭제 표시만 남긴 행을 만듭니다.
+     *
+     * account.created 가 발행에 실패해 멈춰 있는 사이 사용자가 탈퇴하면
+     * account.withdrawn 이 먼저 도착해 지울 프로필이 없습니다.
+     * 그때 아무것도 하지 않으면 나중에 재발행된 account.created 가 도착해
+     * 이미 탈퇴한 계정의 프로필이 뒤늦게 생깁니다.
+     *
+     * 그래서 계정 식별자만 채우고 삭제 시각을 찍은 행을 미리 만들어 둡니다.
+     * account.created 를 소비할 때 existsIncludingDeleted 가 이 행을 보고 멈춥니다.
+     *
+     * 닉네임을 치환하지 않고 비워 둡니다.
+     * 치환의 목적이 auth 가 끊은 신원이 이쪽에 남지 않게 하는 것인데,
+     * 이 행은 애초에 닉네임을 가진 적이 없어 지울 신원이 없습니다.
+     *
+     * 만들면서 곧바로 삭제 표시를 찍습니다.
+     * 두 단계로 나누면 하나만 부른 순간 살아 있는 빈 프로필이 생기고,
+     * 그러면 탈퇴한 사람이 서비스를 계속 쓸 수 있게 됩니다.
+     *
+     * @param deletedBy 삭제자입니다. anonymize 와 같은 값이 들어옵니다.
+     */
+    public static UserProfile withdrawnMarker(UUID accountId, String deletedBy) {
+        if (accountId == null) {
+            throw new IllegalArgumentException("accountId 는 필수입니다.");
+        }
+
+        UserProfile marker = new UserProfile(accountId, null);
+        marker.delete(deletedBy);
+        return marker;
     }
 }

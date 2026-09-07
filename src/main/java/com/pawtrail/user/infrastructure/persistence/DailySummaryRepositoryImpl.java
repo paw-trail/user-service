@@ -47,4 +47,8 @@ public class DailySummaryRepositoryImpl implements DailySummaryRepository {
 
         return dailySummaryJpaRepository.findByAccountIdAndVisitDateIn(accountId, visitDates);
     }
+    @Override
+    public int deleteAllByAccountId(UUID accountId) {
+        return dailySummaryJpaRepository.deleteAllByAccountId(accountId);
+    }
 }

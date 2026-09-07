@@ -65,4 +65,8 @@ public class ItineraryStopRepositoryImpl implements ItineraryStopRepository {
                                                    LocalDateTime toExclusive) {
         return itineraryStopJpaRepository.findVisitAtsInRange(accountId, from, toExclusive);
     }
+    @Override
+    public int deleteAllByAccountId(UUID accountId) {
+        return itineraryStopJpaRepository.deleteAllByAccountId(accountId);
+    }
 }

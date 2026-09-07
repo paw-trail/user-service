@@ -93,4 +93,9 @@ public interface FavoriteRepository {
     // 엔티티가 아니라 place_id 만 돌려주는 이유
     // 부르는 쪽이 하는 일이 contains 하나뿐임
     Set<UUID> findPlaceIdsByAccountIdAndPlaceIdIn(UUID accountId, Collection<UUID> placeIds);
+    // 그 계정의 즐겨찾기 을 한 번에 지움
+    //
+    // 탈퇴 처리가 씀
+    // 반환은 지운 행 수임, 이벤트 소비는 응답이 없어 로그가 유일한 흔적이라 남겨 둠
+    int deleteAllByAccountId(UUID accountId);
 }

@@ -60,4 +60,8 @@ public class VisitLogRepositoryImpl implements VisitLogRepository {
                                                    LocalDateTime dayEnd) {
         return visitLogJpaRepository.findAllByAccountIdAndDay(accountId, dayStart, dayEnd);
     }
+    @Override
+    public int deleteAllByAccountId(UUID accountId) {
+        return visitLogJpaRepository.deleteAllByAccountId(accountId);
+    }
 }
