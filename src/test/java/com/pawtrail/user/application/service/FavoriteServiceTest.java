@@ -89,7 +89,7 @@ class FavoriteServiceTest {
 
         when(placeProvider.findByIds(anyCollection())).thenReturn(Map.of(
                 PLACE_A, new PlaceData(PLACE_A, "멍멍 카페", "CAFE", "https://img/a.jpg",
-                        new BigDecimal("37.5665"), new BigDecimal("126.9780"))));
+                        new BigDecimal("37.5665"), new BigDecimal("126.9780"), false)));
         when(verdictProvider.findByPlaceIds(anyCollection(), eq(PET_ID))).thenReturn(Map.of(
                 PLACE_A, new VerdictData("ALLOWED", List.of("목줄 착용", "배변봉투 지참"))));
         when(reviewProvider.findRatingsByPlaceIds(anyCollection())).thenReturn(Map.of(PLACE_A, 4.8));
@@ -157,7 +157,7 @@ class FavoriteServiceTest {
         givenDefaultPet(null);
 
         when(placeProvider.findByIds(anyCollection())).thenReturn(Map.of(
-                PLACE_B, new PlaceData(PLACE_B, "남은 장소", "PARK", null, null, null)));
+                PLACE_B, new PlaceData(PLACE_B, "남은 장소", "PARK", null, null, null, false)));
         when(reviewProvider.findRatingsByPlaceIds(anyCollection())).thenReturn(Map.of());
 
         List<FavoriteCardOutput> cards = favoriteService.getMyFavorites(ACCOUNT_ID);
@@ -173,7 +173,7 @@ class FavoriteServiceTest {
         givenDefaultPet(PET_ID);
 
         when(placeProvider.findByIds(anyCollection())).thenReturn(Map.of(
-                PLACE_A, new PlaceData(PLACE_A, "멍멍 카페", "CAFE", null, null, null)));
+                PLACE_A, new PlaceData(PLACE_A, "멍멍 카페", "CAFE", null, null, null, false)));
         when(verdictProvider.findByPlaceIds(anyCollection(), eq(PET_ID))).thenReturn(Map.of());
         when(reviewProvider.findRatingsByPlaceIds(anyCollection())).thenReturn(Map.of(PLACE_A, 4.8));
 
@@ -194,7 +194,7 @@ class FavoriteServiceTest {
         givenDefaultPet(null);
 
         when(placeProvider.findByIds(anyCollection())).thenReturn(Map.of(
-                PLACE_A, new PlaceData(PLACE_A, "멍멍 카페", "CAFE", null, null, null)));
+                PLACE_A, new PlaceData(PLACE_A, "멍멍 카페", "CAFE", null, null, null, false)));
         when(reviewProvider.findRatingsByPlaceIds(anyCollection())).thenReturn(Map.of());
 
         List<FavoriteCardOutput> cards = favoriteService.getMyFavorites(ACCOUNT_ID);
@@ -211,7 +211,7 @@ class FavoriteServiceTest {
         givenDefaultPet(null);
 
         when(placeProvider.findByIds(anyCollection())).thenReturn(Map.of(
-                PLACE_A, new PlaceData(PLACE_A, "멍멍 카페", "CAFE", null, null, null)));
+                PLACE_A, new PlaceData(PLACE_A, "멍멍 카페", "CAFE", null, null, null, false)));
         when(reviewProvider.findRatingsByPlaceIds(anyCollection())).thenReturn(Map.of());
 
         List<FavoriteCardOutput> cards = favoriteService.getMyFavorites(ACCOUNT_ID);
@@ -230,8 +230,8 @@ class FavoriteServiceTest {
         givenDefaultPet(null);
 
         when(placeProvider.findByIds(anyCollection())).thenReturn(Map.of(
-                PLACE_A, new PlaceData(PLACE_A, "먼저", "PARK", null, null, null),
-                PLACE_B, new PlaceData(PLACE_B, "나중", "CAFE", null, null, null)));
+                PLACE_A, new PlaceData(PLACE_A, "먼저", "PARK", null, null, null, false),
+                PLACE_B, new PlaceData(PLACE_B, "나중", "CAFE", null, null, null, false)));
         when(reviewProvider.findRatingsByPlaceIds(anyCollection())).thenReturn(Map.of());
 
         List<FavoriteCardOutput> cards = favoriteService.getMyFavorites(ACCOUNT_ID);
