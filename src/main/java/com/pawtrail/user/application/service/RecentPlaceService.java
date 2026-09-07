@@ -98,12 +98,30 @@ public class RecentPlaceService {
             throw new CustomException(CommonErrorCode.EXTERNAL_API_ERROR);
         }
 
-        Map<UUID, VerdictData> verdicts = findVerdicts(accountId, placeIds);
+        UUID defaultPetId = findDefaultPetId(accountId);
+        Map<UUID, VerdictData> verdicts = findVerdicts(accountId, placeIds, defaultPetId);
         Map<UUID, Double> ratings = reviewProvider.findRatingsByPlaceIds(placeIds);
         Set<UUID> favorites = favoriteRepository
                 .findPlaceIdsByAccountIdAndPlaceIdIn(accountId, placeIds);
 
-        return assemble(placeIds, places, verdicts, ratings, favorites);
+        return assemble(placeIds, places, verdicts, ratings, favorites, defaultPetId);
+    }
+
+    /**
+     * 대표 반려동물을 찾습니다.
+     *
+     * 지금은 대표 지정이 막혀 있어 이 값이 언제나 비어 있습니다.
+     * 반려동물 서비스가 없어 그 아이가 정말 내 것인지 확인할 수단이 없기 때문입니다.
+     * 그쪽이 생기면 지정이 열리고 이 경로도 함께 살아납니다.
+     *
+     * 프로필이 없으면 비어 있는 것으로 봅니다.
+     * 가입 직후 이벤트를 아직 처리하지 못한 짧은 순간에 그럴 수 있는데,
+     * 그때 요약을 못 만드는 것이 아니라 판정 배지만 비면 됩니다.
+     */
+    private UUID findDefaultPetId(UUID accountId) {
+        return userProfileRepository.findById(accountId)
+                .map(UserProfile::getDefaultPetId)
+                .orElse(null);
     }
 
     /**
@@ -119,11 +137,8 @@ public class RecentPlaceService {
      * 실패해도 넘어갑니다.
      * 배지가 없어도 최근에 본 곳을 다시 찾는다는 화면의 목적은 이뤄집니다.
      */
-    private Map<UUID, VerdictData> findVerdicts(UUID accountId, List<UUID> placeIds) {
-        UUID defaultPetId = userProfileRepository.findById(accountId)
-                .map(UserProfile::getDefaultPetId)
-                .orElse(null);
-
+    private Map<UUID, VerdictData> findVerdicts(UUID accountId, List<UUID> placeIds,
+                                                UUID defaultPetId) {
         if (defaultPetId == null) {
             return Map.of();
         }
@@ -150,7 +165,8 @@ public class RecentPlaceService {
                                                  Map<UUID, PlaceData> places,
                                                  Map<UUID, VerdictData> verdicts,
                                                  Map<UUID, Double> ratings,
-                                                 Set<UUID> favorites) {
+                                                 Set<UUID> favorites,
+                                                 UUID defaultPetId) {
 
         List<RecentPlaceCardOutput> cards = new ArrayList<>();
         int missing = 0;
@@ -170,7 +186,7 @@ public class RecentPlaceService {
                     place.name(),
                     place.placeType(),
                     place.imageUrl(),
-                    verdictValueOf(data, verdicts),
+                    verdictValueOf(data, defaultPetId),
                     data == null || data.requiredItems() == null
                             ? List.of() : data.requiredItems(),
                     ratings.get(placeId),
@@ -194,11 +210,13 @@ public class RecentPlaceService {
      * 둘을 같은 값으로 내보내면 프론트가 대표 반려동물을 설정해 달라는 말과
      * 판정을 불러오지 못했다는 말을 가려 쓸 수 없습니다.
      *
-     * 판정 전체가 비어 있으면 앞엣것으로 봅니다.
-     * 대표가 없을 때 아예 부르지 않아 그 경우에만 통째로 비기 때문입니다.
+     * 대표가 있었는지로 가릅니다.
+     * 결과가 비어 있는지로는 판단할 수 없습니다.
+     * 판정 서비스는 호출이 실패해도 빈 값을 돌려주기로 되어 있어,
+     * 안 부른 것과 불렀는데 실패한 것이 결과만 보면 똑같습니다.
      */
-    private String verdictValueOf(VerdictData data, Map<UUID, VerdictData> verdicts) {
-        if (verdicts.isEmpty()) {
+    private String verdictValueOf(VerdictData data, UUID defaultPetId) {
+        if (defaultPetId == null) {
             return "UNKNOWN";
         }
         return data == null ? null : data.verdict();
