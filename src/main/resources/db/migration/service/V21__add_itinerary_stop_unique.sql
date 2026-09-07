@@ -1,0 +1,36 @@
+-- itinerary_stop 의 (account_id, place_id, visit_at) 에 UNIQUE 인덱스를 추가합니다.
+--
+-- 계정과 장소와 방문 예정 일시가 모두 같으면 같은 항목입니다.
+-- 같은 장소를 하루에 여러 번 담는 것은 정상이므로 시각이 다르면 다른 항목이고,
+-- 막는 것은 시각까지 완전히 같은 경우뿐입니다.
+--
+-- POST /api/v1/itineraries 가 저장 전에 조회로 걸러 기존 식별자를 돌려주지만
+-- 동시에 들어온 두 요청은 둘 다 그 조회를 통과합니다.
+-- 그때 막을 것이 없어 중복 행이 남습니다.
+--
+-- 두 가지를 함께 얻습니다.
+--
+-- 하나. 조회 계약이 지켜집니다.
+--   findByAccountIdAndPlaceIdAndVisitAt 가 Optional 을 반환하는데 같은 값이 둘이면
+--   IncorrectResultSizeDataAccessException 이 납니다.
+--   그 뒤로는 같은 조합의 담기도 그 시각으로의 수정도 계속 실패하며,
+--   사용자가 그 카드를 지우기 전에는 풀리지 않습니다.
+--
+-- 둘. 세 표의 제약이 나란해집니다.
+--   favorite 은 (account_id, place_id), visit_log 는 (itinerary_stop_id) 에
+--   이미 같은 성격의 인덱스를 가지고 있고 이 표만 빠져 있었습니다.
+--
+-- 하드 딜리트라 지웠다 다시 담는 것은 막히지 않습니다.
+-- 앞의 두 표를 하드 딜리트로 정한 이유가 그것이었고 이 표는 처음부터 하드 딜리트입니다.
+--
+-- 이미 중복 행이 있으면 이 스크립트가 실패하고 기동이 멈춥니다.
+-- 정리 구문을 넣지 않은 것은 의도한 것입니다.
+-- 어느 행을 남기고 거기 붙은 방문 기록을 어떻게 할지는 사람이 보고 정해야 합니다.
+--
+--   SELECT account_id, place_id, visit_at, count(*)
+--     FROM itinerary_stop
+--    GROUP BY account_id, place_id, visit_at
+--   HAVING count(*) > 1;
+
+CREATE UNIQUE INDEX uq_itinerary_stop_account_place_visit_at
+    ON itinerary_stop (account_id, place_id, visit_at);

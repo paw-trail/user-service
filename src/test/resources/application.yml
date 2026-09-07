@@ -15,7 +15,7 @@ spring:
   application:
     # 가려진 main 쪽 값을 다시 적은 것임
     # 없으면 로그의 appName 과 유레카 등록 이름이 unknown 이 됨
-    name: template-service
+    name: user-service
 
   profiles:
     # 가려진 main 쪽 값을 다시 적은 것임
@@ -43,6 +43,60 @@ spring:
     # 두 경로가 형제여야 함, db/migration 하나로 두면 상위 경로라 하위가 버려짐
     # 여기가 없으면 기본값 classpath:db/migration 으로 떨어져 운영과 다른 경로로 검증됨
     locations: classpath:db/migration/common,classpath:db/migration/service
+
+  kafka:
+    listener:
+      # 테스트는 리스너 컨테이너를 띄우지 않음
+      #
+      # 위에서 설정 서버를 껐으므로 카프카 값이 하나도 안 내려옴
+      #   group-id          config 1계층
+      #   bootstrap-servers config 3계층
+      # 그런데 @KafkaListener 가 하나라도 있으면 스프링이 컨테이너를 start 하려 하고
+      # group.id 가 없어 "No group.id found in consumer config" 로 기동이 실패함
+      #
+      # 값을 여기 복사해 넣지 않는 이유는 브로커가 없으면 컨테이너가 뜬 뒤에도
+      # 재연결을 계속 시도해 로그가 테스트 출력을 뒤덮기 때문임
+      # 이 테스트의 목적은 엔티티와 스키마 대조이고 리스너 동작은 실물로 확인함
+      auto-startup: false
+
+app:
+  storage:
+    # config 저장소 2계층의 사본임
+    #
+    # 위에서 설정 서버를 껐으므로 이 값들이 하나도 안 내려옴
+    # StorageProperties 에 @NotBlank·@Positive 가 붙어 있어
+    # 비어 있으면 contextLoads 가 바인딩 단계에서 깨짐
+    #
+    # 실제 버킷을 부르지는 않음
+    # 서명을 만드는 것은 계산이라 통신이 없고, 테스트는 서명을 만들지도 않음
+    # 여기 값은 "형식이 맞는 값이 있다" 만 보이면 되므로 실제 이름을 그대로 적어 둠
+    bucket: pawtrail-media
+    region: ap-northeast-2
+    upload-expires-seconds: 600
+    download-expires-seconds: 3600
+    max-image-bytes: 20971520
+
+  llm:
+    # config 저장소 2계층의 사본임
+    #
+    # 위에서 설정 서버를 껐으므로 이 값들이 하나도 안 내려옴
+    # LlmProperties 에 @NotBlank·@Positive 가 붙어 있어
+    # 비어 있으면 contextLoads 가 바인딩 단계에서 깨짐
+    #
+    # 실제 모델을 부르지는 않음
+    # 테스트는 provider 를 모의 객체로 두므로 통신이 없음
+    # 여기 값은 "형식이 맞는 값이 있다" 만 보이면 됨
+    #
+    # api-key 만 실제와 다름
+    # 운영에서는 환경변수에서 오는데 테스트에 그것을 요구하면
+    # 키가 없는 사람의 빌드가 깨지므로 아무 문자열을 둠
+    api-key: test-key
+    model: gpt-5.6-luna
+    reasoning-effort: low
+    timeout-seconds: 20
+    max-summary-length: 200
+    cooldown-seconds: 60
+    daily-limit: 20
 
 eureka:
   client:
