@@ -73,6 +73,21 @@ public class VisitService {
      * 기본 키를 애플리케이션이 만들어 넣어 INSERT 가 커밋 직전에 나가고,
      * 앞당겨도 그 예외가 트랜잭션에 rollback-only 를 남겨 커밋이 거부됩니다.
      * 즐겨찾기에서 실물로 겪고 조회 방식으로 바꾼 자리입니다.
+     *
+     * 소유권 검증이 중복 조회보다 먼저 와야 합니다.
+     * 중복 조회는 stopId 하나로만 찾으므로 남의 일정에 이미 기록이 있으면
+     * 그 사람의 visitId 가 그대로 응답에 실려 나갑니다.
+     * 검증을 앞에 두면 남의 stopId 는 그 자리에서 걸리고 조회까지 가지 않습니다.
+     *
+     * 조회를 계정 범위로 좁히는 방법도 있으나 순서를 바로잡는 편이 낫습니다.
+     * "내 일정인가" 를 먼저 묻고 "이미 기록했나" 를 나중에 묻는 것이 자연스럽고,
+     * 남의 stopId 일 때 조회를 두 번 하지 않습니다.
+     *
+     * 동시에 두 요청이 들어와 둘 다 조회를 통과하면 하나는 UNIQUE 위반으로 실패합니다.
+     * 같은 사람이 같은 일정을 밀리초 안에 두 번 눌러야 도달하고,
+     * 뚫리더라도 행은 하나만 남아 사용자가 보는 결과는 같습니다.
+     * 네이티브 upsert 로 막을 수 있으나 그러면 이 표만 식별자와 감사 컬럼 넷을
+     * 손으로 채우게 되어 규칙에 예외가 생깁니다. 즐겨찾기에서 같은 판단을 했습니다.
      */
     @Transactional
     public VisitCreateOutput record(UUID accountId, VisitCreateInput input) {
@@ -83,15 +98,15 @@ public class VisitService {
         UUID petId = input.petId();
 
         if (stopId != null) {
+            ItineraryStop stop = itineraryStopRepository
+                    .findByIdAndAccountId(stopId, accountId)
+                    .orElseThrow(() -> new CustomException(CommonErrorCode.RESOURCE_NOT_FOUND));
+
             Optional<VisitLog> already = visitLogRepository.findByItineraryStopId(stopId);
             if (already.isPresent()) {
                 log.info("이미 기록한 일정입니다: accountId={}, stopId={}", accountId, stopId);
                 return new VisitCreateOutput(already.get().getId());
             }
-
-            ItineraryStop stop = itineraryStopRepository
-                    .findByIdAndAccountId(stopId, accountId)
-                    .orElseThrow(() -> new CustomException(CommonErrorCode.RESOURCE_NOT_FOUND));
 
             placeId = stop.getPlaceId();
             visitedAt = stop.getVisitAt();

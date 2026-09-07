@@ -100,9 +100,9 @@ class VisitServiceTest {
         LocalDateTime stopVisitAt = LocalDateTime.of(2026, 9, 3, 14, 0);
         ItineraryStop stop = itineraryStop(PLACE_A, stopVisitAt, PET_A);
 
-        when(visitLogRepository.findByItineraryStopId(STOP_ID)).thenReturn(Optional.empty());
         when(itineraryStopRepository.findByIdAndAccountId(STOP_ID, ACCOUNT_ID))
                 .thenReturn(Optional.of(stop));
+        when(visitLogRepository.findByItineraryStopId(STOP_ID)).thenReturn(Optional.empty());
         when(verdictProvider.findByPlaceIds(List.of(PLACE_A), PET_A))
                 .thenReturn(Map.of(PLACE_A, new VerdictData("ALLOWED", List.of("목줄 착용"))));
         when(visitLogRepository.save(any())).thenAnswer(call -> call.getArgument(0));
@@ -128,6 +128,8 @@ class VisitServiceTest {
         VisitLog already = visitLog(PLACE_A, LocalDateTime.now(), PET_A, Verdict.ALLOWED);
         setField(already, "id", VISIT_ID);
 
+        when(itineraryStopRepository.findByIdAndAccountId(STOP_ID, ACCOUNT_ID))
+                .thenReturn(Optional.of(itineraryStop(PLACE_A, LocalDateTime.now(), PET_A)));
         when(visitLogRepository.findByItineraryStopId(STOP_ID)).thenReturn(Optional.of(already));
 
         VisitCreateOutput output = visitService.record(
@@ -135,13 +137,34 @@ class VisitServiceTest {
 
         assertThat(output.visitId()).isEqualTo(VISIT_ID);
         verify(visitLogRepository, never()).save(any());
-        verify(itineraryStopRepository, never()).findByIdAndAccountId(any(), any());
+        // 판정은 부르지 않아야 함, 새로 만들 것이 없으므로
+        verify(verdictProvider, never()).findByPlaceIds(anyCollection(), any());
+    }
+
+    @Test
+    @DisplayName("남의 일정에 이미 기록이 있어도 그 식별자가 새어 나가지 않는다")
+    void 남의_일정에_기록이_있어도() {
+        VisitLog othersVisit = visitLog(PLACE_A, LocalDateTime.now(), PET_A, Verdict.ALLOWED);
+        setField(othersVisit, "id", VISIT_ID);
+
+        // 그 일정은 내 것이 아님
+        when(itineraryStopRepository.findByIdAndAccountId(STOP_ID, ACCOUNT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> visitService.record(
+                ACCOUNT_ID, new VisitCreateInput(null, STOP_ID, null, null, null)))
+                .isInstanceOf(CustomException.class)
+                .extracting(e -> ((CustomException) e).getErrorCode())
+                .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
+
+        // 소유권 검증이 먼저라 중복 조회까지 가지 않아야 함
+        // 순서가 뒤집히면 남의 visitId 가 응답에 실려 나감
+        verify(visitLogRepository, never()).findByItineraryStopId(any());
     }
 
     @Test
     @DisplayName("내 것이 아닌 일정으로 기록하려 하면 실패한다")
     void 남의_일정() {
-        when(visitLogRepository.findByItineraryStopId(STOP_ID)).thenReturn(Optional.empty());
         when(itineraryStopRepository.findByIdAndAccountId(STOP_ID, ACCOUNT_ID))
                 .thenReturn(Optional.empty());
 
