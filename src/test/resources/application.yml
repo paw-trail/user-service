@@ -76,6 +76,27 @@ app:
     download-expires-seconds: 3600
     max-image-bytes: 20971520
 
+  llm:
+    # config 저장소 2계층의 사본임
+    #
+    # 위에서 설정 서버를 껐으므로 이 값들이 하나도 안 내려옴
+    # LlmProperties 에 @NotBlank·@Positive 가 붙어 있어
+    # 비어 있으면 contextLoads 가 바인딩 단계에서 깨짐
+    #
+    # 실제 모델을 부르지는 않음
+    # 테스트는 provider 를 모의 객체로 두므로 통신이 없음
+    # 여기 값은 "형식이 맞는 값이 있다" 만 보이면 됨
+    #
+    # api-key 만 실제와 다름
+    # 운영에서는 환경변수에서 오는데 테스트에 그것을 요구하면
+    # 키가 없는 사람의 빌드가 깨지므로 아무 문자열을 둠
+    api-key: test-key
+    model: gpt-5.6-luna
+    timeout-seconds: 20
+    max-summary-length: 200
+    cooldown-seconds: 60
+    daily-limit: 20
+
 eureka:
   client:
     # 테스트는 서비스 디스커버리에 참여하지 않음
