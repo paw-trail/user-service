@@ -70,5 +70,9 @@ public interface FavoriteRepository {
     // 엔티티가 아니라 UUID 만 돌려주는 이유
     // 부르는 쪽이 하는 일이 "이 사람들에게 알림을 만든다" 뿐이고
     // 담은 시각이나 메모는 알림 문구에도 수신 설정 판단에도 쓰이지 않음
+    //
+    // 순서가 요청 사이에 흔들리지 않음
+    // 페이지를 나눠 가져가는데 순서가 바뀌면
+    // 같은 계정이 두 페이지에 나오거나 아예 빠져 알림이 두 번 가거나 안 감
     Page<UUID> findAccountIdsByPlaceId(UUID placeId, Pageable pageable);
 }
