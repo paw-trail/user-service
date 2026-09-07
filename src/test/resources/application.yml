@@ -92,6 +92,7 @@ app:
     # 키가 없는 사람의 빌드가 깨지므로 아무 문자열을 둠
     api-key: test-key
     model: gpt-5.6-luna
+    reasoning-effort: low
     timeout-seconds: 20
     max-summary-length: 200
     cooldown-seconds: 60

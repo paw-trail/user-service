@@ -31,6 +31,10 @@ import org.springframework.validation.annotation.Validated;
  *
  * @param apiKey            OpenAI API 키입니다. 환경변수 OPENAI_API_KEY 에서 옵니다.
  * @param model             모델 이름입니다. 요청 본문에 그대로 실립니다.
+ * @param reasoningEffort   추론에 얼마나 힘을 쓸지입니다. none · low · medium · high 등이 있습니다.
+ *                          기본값이 medium 이지만 이 작업에는 과합니다.
+ *                          주어진 값을 문장으로 옮기는 일이라 판단할 것이 없기 때문입니다.
+ *                          추론 토큰은 출력으로 과금되고 응답도 그만큼 느려집니다.
  * @param timeoutSeconds    호출 제한 시간입니다.
  *                          전역 app.rest-client 의 5초로는 부족해 따로 둡니다.
  *                          그 값을 늘리면 장소나 판정 호출까지 느슨해집니다.
@@ -49,6 +53,9 @@ public record LlmProperties(
 
         @NotBlank(message = "app.llm.model 이 필요합니다")
         String model,
+
+        @NotBlank(message = "app.llm.reasoning-effort 가 필요합니다")
+        String reasoningEffort,
 
         @Positive(message = "app.llm.timeout-seconds 는 양수여야 합니다")
         long timeoutSeconds,
