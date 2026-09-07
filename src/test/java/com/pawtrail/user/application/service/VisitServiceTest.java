@@ -402,7 +402,7 @@ class VisitServiceTest {
     }
 
     private PlaceData place(UUID placeId, String name, String placeType) {
-        return new PlaceData(placeId, name, placeType, null, null, null);
+        return new PlaceData(placeId, name, placeType, null, null, null, false);
     }
 
     private ItineraryStop itineraryStop(UUID placeId, LocalDateTime visitAt, UUID petId) {

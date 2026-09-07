@@ -42,7 +42,7 @@ public class ItineraryStop extends BaseEntity {
     // 방문 예정 일시임
     //
     // 시각을 안 정했으면 그 날짜의 00:00 이 들어감
-    // 날짜로 고르는 조회는 BETWEEN 으로 함
+    // 날짜로 고르는 조회는 반열림 구간으로 함
     //
     // 예전에는 visit_date 와 planned_at 으로 나뉘어 있었음
     // 규약이 "시각은 전부 timestamp" 라 타입이 갈리면
@@ -104,5 +104,34 @@ public class ItineraryStop extends BaseEntity {
             throw new IllegalArgumentException("visitOrder 는 1 이상이어야 하며 서버가 채웁니다.");
         }
         return new ItineraryStop(accountId, placeId, visitAt, petId, visitOrder, memo);
+    }
+
+    /**
+     * 담아 둔 일정을 고칩니다.
+     *
+     * 바꿀 수 있는 것은 이 셋뿐입니다.
+     * placeId 는 컬럼이 updatable = false 이고, 장소를 바꾸는 것은 수정이 아니라
+     * 다른 일정을 담는 것입니다.
+     *
+     * visitOrder 를 건드리지 않습니다.
+     * 목록 정렬이 visit_at 을 먼저 보므로 시각을 고치면 자리가 저절로 옮겨집니다.
+     * 이 값은 시각이 같을 때의 순서라서 같은 날 안에 머무르는 한 다시 매길 이유가 없습니다.
+     *
+     * 날짜가 바뀌는지는 여기서 보지 않습니다.
+     * 그것은 "다른 일정으로 옮긴다" 는 뜻이라 서비스가 미리 거르고 400 으로 돌려보냅니다.
+     * 엔티티는 값이 성립하는지만 봅니다.
+     *
+     * petId 와 memo 는 null 을 그대로 받습니다.
+     * 각각 동반 동물을 떼는 것과 메모를 지우는 것이라 유효한 상태입니다.
+     * "안 보냈다" 와 "비우겠다" 를 가르는 일은 요청 계층이 이미 끝냈고,
+     * 여기에 오는 값은 저장할 최종 값입니다.
+     */
+    public void update(LocalDateTime visitAt, UUID petId, String memo) {
+        if (visitAt == null) {
+            throw new IllegalArgumentException("visitAt 은 필수입니다.");
+        }
+        this.visitAt = visitAt;
+        this.petId = petId;
+        this.memo = memo;
     }
 }

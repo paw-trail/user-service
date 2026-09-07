@@ -14,11 +14,15 @@ import java.math.BigDecimal;
  *
  * 이 응답 형태는 명세에 없습니다.
  * 명세에는 누가 부르는지만 있고 무엇이 오는지가 적혀 있지 않아,
- * 부르는 쪽인 우리가 필요한 여섯 필드로 정했습니다.
+ * 부르는 쪽인 우리가 필요한 일곱 필드로 정했습니다.
  * place 서비스를 만들 때 이 형태에 맞춰야 합니다.
  *
  * placeId 를 String 으로 받는 것은 그쪽이 문자열로 보내기 때문입니다.
  * UUID 로 바꾸는 일은 구현이 합니다.
+ *
+ * supplyPoint 를 기본 타입으로 받습니다.
+ * 그쪽 컬럼이 NOT NULL 이라 값이 언제나 오고, 빠져 있으면 false 가 됩니다.
+ * 보급 지점이 아니라는 뜻이 되므로 안전한 쪽으로 떨어집니다.
  *
  * 모르는 필드는 무시합니다.
  * place 가 나중에 필드를 더해도 우리 쪽이 깨지지 않습니다.
@@ -30,5 +34,6 @@ public record PlaceResponse(
         String placeType,
         String imageUrl,
         BigDecimal lat,
-        BigDecimal lon) {
+        BigDecimal lon,
+        boolean supplyPoint) {
 }

@@ -3,6 +3,8 @@ package com.pawtrail.user.infrastructure.persistence;
 import com.pawtrail.user.domain.model.ItineraryStop;
 import com.pawtrail.user.domain.repository.ItineraryStopRepository;
 import com.pawtrail.user.infrastructure.persistence.jpa.ItineraryStopJpaRepository;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -35,5 +37,32 @@ public class ItineraryStopRepositoryImpl implements ItineraryStopRepository {
     @Override
     public Optional<ItineraryStop> findByIdAndAccountId(UUID id, UUID accountId) {
         return itineraryStopJpaRepository.findByIdAndAccountId(id, accountId);
+    }
+
+    @Override
+    public List<ItineraryStop> findAllByAccountIdAndDay(UUID accountId,
+                                                        LocalDateTime dayStart,
+                                                        LocalDateTime dayEnd) {
+        return itineraryStopJpaRepository.findAllByAccountIdAndDay(accountId, dayStart, dayEnd);
+    }
+
+    @Override
+    public int findMaxVisitOrder(UUID accountId, LocalDateTime dayStart, LocalDateTime dayEnd) {
+        return itineraryStopJpaRepository.findMaxVisitOrder(accountId, dayStart, dayEnd);
+    }
+
+    @Override
+    public Optional<ItineraryStop> findByAccountIdAndPlaceIdAndVisitAt(UUID accountId,
+                                                                       UUID placeId,
+                                                                       LocalDateTime visitAt) {
+        return itineraryStopJpaRepository
+                .findByAccountIdAndPlaceIdAndVisitAt(accountId, placeId, visitAt);
+    }
+
+    @Override
+    public List<LocalDateTime> findVisitAtsInRange(UUID accountId,
+                                                   LocalDateTime from,
+                                                   LocalDateTime toExclusive) {
+        return itineraryStopJpaRepository.findVisitAtsInRange(accountId, from, toExclusive);
     }
 }

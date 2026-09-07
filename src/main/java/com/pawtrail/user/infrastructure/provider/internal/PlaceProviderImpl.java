@@ -123,7 +123,8 @@ public class PlaceProviderImpl implements PlaceProvider {
                     response.placeType(),
                     response.imageUrl(),
                     response.lat(),
-                    response.lon()));
+                    response.lon(),
+                    response.supplyPoint()));
         }
         return result;
     }
