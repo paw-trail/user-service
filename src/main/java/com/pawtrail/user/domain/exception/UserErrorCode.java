@@ -18,6 +18,9 @@ import org.springframework.http.HttpStatus;
  * 그전까지는 CommonErrorCode 여섯 개로 충분했습니다.
  * 프로필도 즐겨찾기도 실패가 "값이 잘못됐다" 나 "없다" 로 표현되는 것뿐이었고,
  * 우리가 이름을 붙여야 하는 실패가 처음 나온 자리가 여기입니다.
+ *
+ * 공통 코드를 쓸지 여기에 둘지는 메시지가 상황을 맞게 말하는가로 가릅니다.
+ * 상태 코드가 같아도 사용자에게 보일 문구가 어긋나면 여기에 둡니다.
  */
 public enum UserErrorCode implements ErrorCode {
 
@@ -47,7 +50,24 @@ public enum UserErrorCode implements ErrorCode {
     //
     // * 이름에 API 를 넣지 않은 이유
     //   일정도 판정을 부르므로 그때 같은 코드를 그대로 씀
-    VERDICT_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "판정을 불러오지 못해 기록하지 못했습니다.");
+    VERDICT_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "판정을 불러오지 못해 기록하지 못했습니다."),
+
+    // 그 방문 기록이 없거나 내 것이 아님
+    //
+    // * 두 경우에 같은 코드를 씀
+    //   403 을 내면 "그 visitId 는 존재하는데 네 것이 아니다" 를 알려주는 셈이라
+    //   식별자를 넣어 보며 존재를 확인할 수 있게 됨
+    //   조회를 accountId 와 함께 하므로 서비스도 두 경우를 구분하지 않음
+    //
+    // * CommonErrorCode.RESOURCE_NOT_FOUND 를 쓰지 않는 이유
+    //   그 코드의 메시지가 "요청하신 경로를 찾을 수 없습니다" 임
+    //   없는 URL 을 불렀을 때 쓰려고 만든 것이라 여기서는 뜻이 어긋남
+    //   프론트가 그 문구를 그대로 띄우면 사용자가 주소가 잘못된 줄로 읽음
+    //
+    // * 정상 흐름에서도 나올 수 있는 자리임
+    //   삭제 버튼은 목록에 있는 카드에만 붙지만
+    //   더블클릭이나 두 탭에서 이미 지운 것을 다시 지우려는 요청이 나감
+    VISIT_NOT_FOUND(HttpStatus.NOT_FOUND, "이미 삭제되었거나 없는 기록입니다.");
 
     private final HttpStatus httpStatus;
     private final String message;

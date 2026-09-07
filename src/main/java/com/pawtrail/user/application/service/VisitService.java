@@ -160,11 +160,16 @@ public class VisitService {
      * 남의 것과 없는 것을 구분하지 않고 같은 응답을 냅니다.
      * 403 을 내면 그 visitId 가 존재한다는 것을 알려주는 셈이라
      * 식별자를 넣어 보며 존재를 확인할 수 있게 됩니다.
+     *
+     * 즐겨찾기 해제와 달리 멱등이 아닙니다.
+     * 하트 해제는 "안 담긴 상태" 를 만드는 동작이라 이미 안 담겼으면 목적이 이미 이뤄졌지만,
+     * 기록 삭제는 특정 대상을 가리키는 동작이라 대상이 없으면 없다고 해야 합니다.
+     * 성공을 돌려주면 사용자는 지워졌다고 믿습니다.
      */
     @Transactional
     public void remove(UUID accountId, UUID visitId) {
         VisitLog visit = visitLogRepository.findByIdAndAccountId(visitId, accountId)
-                .orElseThrow(() -> new CustomException(CommonErrorCode.RESOURCE_NOT_FOUND));
+                .orElseThrow(() -> new CustomException(UserErrorCode.VISIT_NOT_FOUND));
 
         visitLogRepository.delete(visit);
         log.info("방문 기록을 지웠습니다: accountId={}, visitId={}", accountId, visitId);
