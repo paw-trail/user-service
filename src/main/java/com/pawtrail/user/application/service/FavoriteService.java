@@ -21,7 +21,6 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -68,10 +67,23 @@ public class FavoriteService {
      * 정상 흐름에서는 중복 요청이 나가지도 않습니다.
      * 더블클릭이나 두 탭에서 나가는 것인데 거기에 오류를 띄우면 오히려 이상합니다.
      *
-     * 먼저 조회해서 거르지 않고 예외를 잡습니다.
-     * 조회와 저장 사이에 다른 요청이 끼어들면 둘 다 조회를 통과해 버립니다.
-     * 중복을 실제로 막는 것은 uq_favorite_account_place 이고,
-     * 여기서는 그것이 걸렸을 때 조용히 넘어가기만 합니다.
+     * 조회로 먼저 거릅니다.
+     *
+     * 처음에는 조회 없이 저장하고 UNIQUE 위반을 잡는 쪽으로 만들었습니다.
+     * 조회와 저장 사이에 다른 요청이 끼어들 수 있다는 이유였는데, 그 방식은 되지 않습니다.
+     * 제약 위반이 나면 스프링이 트랜잭션에 rollback-only 표시를 남기고,
+     * 그 표시는 예외를 잡아도 지워지지 않습니다.
+     * 메서드가 정상으로 끝나도 커밋이 거부되어 UnexpectedRollbackException 이 납니다.
+     * 실제로 그렇게 500 이 나가는 것을 겪고 이 형태로 바꿨습니다.
+     *
+     * 그래서 남는 틈은 받아들입니다.
+     * 같은 사람이 같은 장소를 밀리초 안에 두 번 담아야 도달하고,
+     * 뚫리더라도 uq_favorite_account_place 가 막아 행은 하나만 남습니다.
+     * 사용자가 보는 결과는 어느 쪽이든 "담긴 상태" 로 같습니다.
+     *
+     * 네이티브 INSERT 에 ON CONFLICT DO NOTHING 을 붙이면 틈이 없어지지만,
+     * 그러면 이 표만 id 와 감사 컬럼 넷을 손으로 채우게 되어
+     * 감사 컬럼을 자동으로 채운다는 규칙에 예외가 하나 생깁니다.
      *
      * 장소가 실재하는지 확인하지 않습니다.
      * 담은 뒤에 장소가 사라지는 경우는 그 검사로 막지 못하고,
@@ -80,15 +92,19 @@ public class FavoriteService {
      */
     @Transactional
     public void add(UUID accountId, FavoriteCreateInput input) {
-        try {
-            favoriteRepository.save(
-                    Favorite.create(accountId, input.placeId(), input.memo()));
+        boolean already = favoriteRepository
+                .findByAccountIdAndPlaceId(accountId, input.placeId())
+                .isPresent();
 
-            log.info("즐겨찾기에 담았습니다: accountId={}, placeId={}", accountId, input.placeId());
-
-        } catch (DataIntegrityViolationException e) {
-            log.info("이미 담아 둔 장소입니다: accountId={}, placeId={}", accountId, input.placeId());
+        if (already) {
+            log.info("이미 담아 둔 장소입니다: accountId={}, placeId={}",
+                    accountId, input.placeId());
+            return;
         }
+
+        favoriteRepository.save(Favorite.create(accountId, input.placeId(), input.memo()));
+
+        log.info("즐겨찾기에 담았습니다: accountId={}, placeId={}", accountId, input.placeId());
     }
 
     /**
