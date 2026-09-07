@@ -62,6 +62,10 @@ public class PlaceProviderImpl implements PlaceProvider {
      * 응답 형태가 다른 것까지 결과가 모두 같기 때문입니다.
      * 값을 못 받았다는 것 하나이고 부르는 쪽이 할 일도 하나입니다.
      *
+     * 실패에 null 을 돌려줍니다.
+     * 빈 Map 으로 돌려주면 "장소가 다 없어졌다" 와 구분되지 않는데,
+     * 부르는 쪽이 앞엣것은 빈 목록으로 내려보내고 뒤엣것은 요청을 실패시킵니다.
+     *
      * 로그를 warn 으로 남깁니다.
      * 지금은 place 서비스가 없어 언제나 이 경로로 옵니다.
      * 스택트레이스까지 남기면 요청마다 쌓이므로 메시지만 남깁니다.
@@ -82,7 +86,7 @@ public class PlaceProviderImpl implements PlaceProvider {
 
             if (response == null || response.getData() == null) {
                 log.warn("장소 응답이 비어 있습니다: 요청 {}건", placeIds.size());
-                return Map.of();
+                return null;
             }
 
             return toMap(response.getData());
@@ -90,7 +94,7 @@ public class PlaceProviderImpl implements PlaceProvider {
         } catch (Exception e) {
             log.warn("장소를 받아오지 못했습니다: 요청 {}건, reason={}",
                     placeIds.size(), e.getMessage());
-            return Map.of();
+            return null;
         }
     }
 
