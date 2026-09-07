@@ -35,4 +35,9 @@ public interface DailySummaryRepository {
     // 서버가 저장할 때 언제나 00:00 으로 고정함
     // 시각이 붙은 값으로 찾으면 하나도 안 걸림
     List<DailySummary> findByAccountIdAndVisitDateIn(UUID accountId, Collection<LocalDateTime> visitDates);
+    // 그 계정의 하루 요약 을 한 번에 지움
+    //
+    // 탈퇴 처리가 씀
+    // 반환은 지운 행 수임, 이벤트 소비는 응답이 없어 로그가 유일한 흔적이라 남겨 둠
+    int deleteAllByAccountId(UUID accountId);
 }

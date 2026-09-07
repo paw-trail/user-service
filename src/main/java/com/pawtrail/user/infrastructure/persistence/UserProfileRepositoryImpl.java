@@ -49,4 +49,9 @@ public class UserProfileRepositoryImpl implements UserProfileRepository {
     public boolean existsIncludingDeleted(UUID accountId) {
         return userProfileJpaRepository.existsIncludingDeleted(accountId);
     }
+
+    @Override
+    public Optional<UserProfile> findByIdIncludingDeleted(UUID accountId) {
+        return userProfileJpaRepository.findByIdIncludingDeleted(accountId);
+    }
 }

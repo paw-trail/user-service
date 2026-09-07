@@ -63,4 +63,8 @@ public class FavoriteRepositoryImpl implements FavoriteRepository {
 
         return favoriteJpaRepository.findPlaceIdsByAccountIdAndPlaceIdIn(accountId, placeIds);
     }
+    @Override
+    public int deleteAllByAccountId(UUID accountId) {
+        return favoriteJpaRepository.deleteAllByAccountId(accountId);
+    }
 }
