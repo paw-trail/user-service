@@ -70,8 +70,8 @@
 | 부르는 바깥 시스템 | 2개 | AWS S3 · OpenAI |
 | 서비스 클래스 | 7개 | [6-3](#6-3-서비스-클래스-7개--누가-무엇을-하나) |
 | 에러 코드 | 9개 | [4-11](#4-11-에러-코드) |
-| 자바 파일 | 100개 | 테스트 8개 별도 |
-| 테스트 | 97개 | 서비스 6개 + 검증기 1개 + `contextLoads` |
+| 자바 파일 | 100개 | 테스트 9개 별도 |
+| 테스트 | 104개 | 서비스 6개 + 검증기 1개 + provider 1개 + `contextLoads` |
 
 ---
 
@@ -691,12 +691,32 @@ GET /api/v1/favorites
 
 | 부르는 곳 | 무엇을 받나 | 어떻게 부르나 |
 |---|---|---|
-| place | `placeId` · `name` · `placeType` · `imageUrl` · `lat` · `lon` · `supplyPoint` | 식별자 목록을 한 번에 |
-| verdict | 판정값 · `requiredItems` | 식별자 목록 + 대표 펫 하나 |
+| place | `placeId` · `name` · `placeType` · `imageUrl` · `lat` · `lon` · `supplyPoint` | 식별자 목록을 **100개씩** |
+| verdict | 판정값 · `requiredItems` | 식별자 목록을 **500개씩** + 대표 펫 하나 |
 | review | `ratingAvg` | 식별자 목록을 한 번에 |
 | favorite (자기 표) | 담아 둔 `place_id` 집합 | 화면에 따라 부르거나 안 부름 |
 
-> **전부 목록으로 한 번에 부릅니다.** 장소마다 부르면 20곳짜리 목록에 호출이 20번입니다.
+> **전부 목록으로 부릅니다.** 장소마다 부르면 20곳짜리 목록에 호출이 20번입니다.
+
+---
+
+**⛔다만 한 번에 다 보내지는 못합니다.**
+
+```
+place    GET /internal/places?ids=      @Size(max = 100)   넘으면 400
+verdict  POST /internal/verdicts/batch  placeIds 500건     넘으면 400
+review   GET /internal/reviews/stats    상한 없음
+```
+
+| | 왜 상한이 있나 |
+|---|---|
+| place | 식별자가 **주소에 실려** 하나에 41바이트. Tomcat 이 8KB 까지만 받아 180개가 천장 |
+| verdict | 본문으로 보내 길이 문제는 없으나 **판정 계산량**이 건수에 비례함 |
+
+> **그래서 두 provider 가 안에서 잘라 여러 번 부릅니다.** 나눠 부르는 것이 부르는 쪽에
+> 드러나지 않습니다 — 도메인은 장소 목록을 넘기고 `Map` 을 받을 뿐입니다.
+> ⛔ **어느 한 묶음이라도 실패하면 나머지를 포기합니다.** 성공분만 모으면
+> *장애로 못 받아온 것*과 *진짜 없어진 장소*가 화면에서 똑같이 보입니다.
 
 <br><br>
 
@@ -2012,7 +2032,7 @@ infrastructure/provider/*/dto/       받는 쪽 형태        PlaceResponse · V
 
 ---
 
-### 6-6. 테스트 97개
+### 6-6. 테스트 104개
 
 | 파일 | 개수 | 무엇을 보나 |
 |---|---|---|
@@ -2023,11 +2043,15 @@ infrastructure/provider/*/dto/       받는 쪽 형태        PlaceResponse · V
 | `RecentPlaceServiceTest` | 12 | 카드 조립 · 없는 장소 · 판정 실패와 대표 없음의 구분 |
 | `FavoriteServiceTest` | 11 | 조립 · 실패 처리 · 멱등 |
 | `PetOwnershipValidatorTest` | 4 | 통과 · 남의 것 · 값이 없으면 안 부름 · 실패는 다른 코드 |
+| `PlaceProviderImplTest` | 7 | 경계 100·101 · 여러 묶음 · 중간 실패 · 일부 누락 · 빈 목록 |
 | `UserApplicationTests` | 1 | `contextLoads` |
 
 ```
 스프링 컨텍스트를 띄우는 것은 contextLoads 하나뿐
 나머지는 Mockito + AssertJ.  DB 도 Redis 도 안 띄움
+⛔PlaceProviderImplTest 만 다름 — MockRestServiceServer 로 HTTP 를 흉내 냄
+  나눠 부르는 일이 provider 안에서 일어나 목으로는 보이지 않기 때문임
+  spring-boot-starter-test 에 이미 들어 있어 의존성은 늘지 않음
 ```
 
 > **`AfterCommitExecutor` 만 목이 아니라 실제 객체를 넣습니다.** 그 클래스는
@@ -2580,9 +2604,11 @@ AfterCommitExecutor 가 실패를 잡아 삼키는 단위는 "넘겨받은 일 �
 > **담기 상한도 두지 않았습니다.** *"1~2년만 써도 200건은 금방 차고 여러 마리 키우면
 > 더 부족하다"* 는 판단이었습니다. **상한은 부하를 막는 장치가 아니라 사용자를 막는 벽**이 됩니다.
 
-> ⚠ **대가가 있습니다.** 건수가 커지면 place·verdict 배치와 응답 크기가 비례해 커지고
-> 막는 장치가 없습니다. 네 화면이 같은 카드라 **옮긴다면 함께 옮겨야 하고,**
+> ⚠ **대가가 있습니다.** 건수가 커지면 응답 크기가 비례해 커지고 막는 장치가 없습니다.
+> 네 화면이 같은 카드라 **옮긴다면 함께 옮겨야 하고,**
 > 그때 카테고리 칩 카운트용 집계 API 를 함께 정해야 합니다.
+> ✅ **호출 자체는 터지지 않습니다.** place 를 100개씩, verdict 를 500개씩 나눠 부르므로
+> 건수가 늘면 호출 횟수가 늘 뿐입니다. 담기 상한을 안 둔 결정이 여기에 기대고 있습니다.
 
 <br><br>
 

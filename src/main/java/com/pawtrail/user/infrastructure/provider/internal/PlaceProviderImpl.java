@@ -4,6 +4,7 @@ import com.pawtrail.common.response.CommonApiResponse;
 import com.pawtrail.user.domain.provider.PlaceProvider;
 import com.pawtrail.user.domain.provider.dto.PlaceData;
 import com.pawtrail.user.infrastructure.provider.internal.dto.PlaceResponse;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,6 +28,29 @@ import org.springframework.web.client.RestClient;
 public class PlaceProviderImpl implements PlaceProvider {
 
     private static final String BASE_URL = "lb://place-service";
+
+    /**
+     * 한 번에 보낼 수 있는 장소 수입니다.
+     *
+     * place 가 GET /internal/places?ids= 에 @Size(max = 100) 을 걸어 두었습니다.
+     * 넘기면 400 이 나고, 목록 API 는 장소 이름이 없으면 카드가 성립하지 않아
+     * 그 400 하나가 목록 전체를 실패시킵니다.
+     *
+     * 즐겨찾기는 담기 상한을 두지 않기로 했고 방문 기록과 일정도 페이징이 없어
+     * 건수가 100 을 넘을 수 있습니다. 그래서 여기서 잘라 여러 번 부릅니다.
+     *
+     * 이 값은 우리가 고를 수 있는 값이 아닙니다.
+     * place 가 정한 계약이므로 설정으로 빼면 바꿀 수 있는 값처럼 보이는데
+     * 실제로 올리면 그대로 400 이 납니다. 타임아웃과 성격이 정반대입니다.
+     *
+     * place 쪽 근거는 그 컨트롤러 주석에 있습니다.
+     * 식별자 하나가 주소에서 41바이트를 차지하고 Tomcat 이 요청 줄과 헤더를 합쳐
+     * 8KB 까지만 받아 180개 언저리가 이미 천장이며, 100 은 그 절반입니다.
+     *
+     * VerdictProviderImpl 도 같은 이유로 BATCH_SIZE 를 코드 상수로 둡니다.
+     */
+    private static final int BATCH_SIZE = 100;
+
     private final RestClient restClient;
 
     /**
@@ -51,24 +75,29 @@ public class PlaceProviderImpl implements PlaceProvider {
     }
 
     /**
-     * 여러 장소를 한 번에 받아옵니다.
+     * 여러 장소를 받아옵니다.
      *
      * 빈 목록으로 부르면 호출하지 않습니다.
      * 즐겨찾기가 하나도 없는 사람이 목록을 열 때가 그 경우인데,
      * 물어볼 것이 없는 요청을 보낼 이유가 없습니다.
      *
-     * 잡는 범위를 Exception 으로 둡니다.
-     * 연결 거부, 시간 초과, 유레카가 서비스를 못 찾는 것,
-     * 응답 형태가 다른 것까지 결과가 모두 같기 때문입니다.
-     * 값을 못 받았다는 것 하나이고 부르는 쪽이 할 일도 하나입니다.
+     * 100개씩 나눠 여러 번 부릅니다.
+     * 나눠 부르는 것이 부르는 쪽에 드러나지 않습니다.
+     * 도메인은 장소 목록을 넘기고 Map 을 받을 뿐이고 반환 계약도 그대로입니다.
      *
-     * 실패에 null 을 돌려줍니다.
+     * 어느 한 묶음이 실패하면 나머지를 포기하고 null 을 돌려줍니다.
+     * 성공한 묶음만 모아 돌려주면 안 되는 이유가 있습니다.
+     * 응답에 없는 placeId 는 이미 "그 장소가 사라졌다" 는 뜻이고 부르는 쪽이 카드에서 뺍니다.
+     * 그래서 일부만 채우면 장애로 못 받아온 것과 진짜 없어진 것이 똑같이 보이고,
+     * 사용자는 자기가 담아둔 곳이 목록에서 없어진 것으로 읽습니다.
+     * VerdictProviderImpl 이 같은 판단을 했고 근거도 같습니다.
+     *
+     * 실패에 null 을 돌려주는 것은 종전 그대로입니다.
      * 빈 Map 으로 돌려주면 "장소가 다 없어졌다" 와 구분되지 않는데,
      * 부르는 쪽이 앞엣것은 빈 목록으로 내려보내고 뒤엣것은 요청을 실패시킵니다.
      *
-     * 로그를 warn 으로 남깁니다.
-     * 지금은 place 서비스가 없어 언제나 이 경로로 옵니다.
-     * 스택트레이스까지 남기면 요청마다 쌓이므로 메시지만 남깁니다.
+     * 실패 즉시 빠져나오므로 부분 성공이라는 세 번째 상태가 생기지 않습니다.
+     * 부르는 쪽이 보는 것은 여전히 둘뿐입니다.
      */
     @Override
     public Map<UUID, PlaceData> findByIds(Collection<UUID> placeIds) {
@@ -76,6 +105,38 @@ public class PlaceProviderImpl implements PlaceProvider {
             return Map.of();
         }
 
+        List<UUID> targets = new ArrayList<>(placeIds);
+        Map<UUID, PlaceData> result = new LinkedHashMap<>();
+
+        for (int from = 0; from < targets.size(); from += BATCH_SIZE) {
+            int to = Math.min(from + BATCH_SIZE, targets.size());
+
+            Map<UUID, PlaceData> chunk = requestChunk(targets.subList(from, to));
+            if (chunk == null) {
+                return null;
+            }
+            result.putAll(chunk);
+        }
+        return result;
+    }
+
+    /**
+     * 한 묶음을 요청합니다. 실패하면 null 을 돌려줍니다.
+     *
+     * 빈 Map 이 아니라 null 인 것은 둘을 갈라야 하기 때문입니다.
+     * 빈 Map 은 "물어봤는데 그 묶음에 남은 장소가 없다" 이고
+     * null 은 "물어보지 못했다" 입니다.
+     * 위 반복문이 앞엣것은 그대로 합치고 뒤엣것은 전체를 포기합니다.
+     *
+     * 잡는 범위를 Exception 으로 둡니다.
+     * 연결 거부, 시간 초과, 유레카가 서비스를 못 찾는 것,
+     * 응답 형태가 다른 것까지 결과가 모두 같기 때문입니다.
+     * 값을 못 받았다는 것 하나이고 부르는 쪽이 할 일도 하나입니다.
+     *
+     * 로그에 묶음 크기만 남깁니다.
+     * 스택트레이스까지 남기면 요청마다 쌓이므로 메시지만 남깁니다.
+     */
+    private Map<UUID, PlaceData> requestChunk(List<UUID> placeIds) {
         try {
             CommonApiResponse<List<PlaceResponse>> response = restClient.get()
                     .uri(builder -> builder.path("/internal/places")
