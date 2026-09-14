@@ -5,6 +5,7 @@ import com.pawtrail.common.exception.CustomException;
 import com.pawtrail.user.application.dto.input.VisitCreateInput;
 import com.pawtrail.user.application.dto.output.VisitCardOutput;
 import com.pawtrail.user.application.dto.output.VisitCreateOutput;
+import com.pawtrail.user.application.support.PetOwnershipValidator;
 import com.pawtrail.user.domain.enums.Verdict;
 import com.pawtrail.user.domain.exception.UserErrorCode;
 import com.pawtrail.user.domain.model.DailySummary;
@@ -60,6 +61,7 @@ public class VisitService {
     private final PlaceProvider placeProvider;
     private final VerdictProvider verdictProvider;
     private final ReviewProvider reviewProvider;
+    private final PetOwnershipValidator petOwnershipValidator;
 
     /**
      * 방문을 기록합니다.
@@ -73,6 +75,27 @@ public class VisitService {
      * 기본 키를 애플리케이션이 만들어 넣어 INSERT 가 커밋 직전에 나가고,
      * 앞당겨도 그 예외가 트랜잭션에 rollback-only 를 남겨 커밋이 거부됩니다.
      * 즐겨찾기에서 실물로 겪고 조회 방식으로 바꾼 자리입니다.
+     *
+     * 동반 동물의 소유권은 즉흥 방문일 때만 확인합니다.
+     * 일정에서 온 방문은 petId 를 그 일정 행에서 가져오는데,
+     * 그 값은 일정에 담을 때 이미 확인이 끝났습니다.
+     * 여기서 다시 물으면 다녀왔어요 를 누를 때마다 pet 을 한 번 더 부르게 됩니다.
+     *
+     * 즉흥 방문은 요청이 보낸 petId 를 그대로 쓰므로 반드시 확인해야 합니다.
+     * 그 버튼이 아직 화면에 없지만 API 는 열려 있어 직접 부르면 통과합니다.
+     * 화면에 보낼 자리가 없다는 것을 근거로 삼지 않기로 한 그 기준입니다.
+     * 여기서 저장하는 판정은 나중에 고치는 API 가 없어 틀린 값이 영구히 남습니다.
+     *
+     * 다만 필수값 검사보다는 뒤에 둡니다.
+     * placeId 와 visitedAt 에 @NotNull 을 걸지 않았습니다.
+     * 일정에서 오면 안 보내는 값이라 조건부로만 필수이고 애노테이션으로는 표현할 수 없어,
+     * 두 값이 비었는지를 여기서 봅니다.
+     * 그 검사보다 앞에서 pet 을 부르면 요청 자체가 성립하지 않는데도 남의 서비스를 먼저 부르고,
+     * 그 호출이 실패하면 VALIDATION_FAILED 로 나가야 할 응답이 PET_UNAVAILABLE 로 나갑니다.
+     *
+     * 그래서 else 로 묶지 않고 stopId == null 을 한 번 더 봅니다.
+     * 필수값 검사를 두 경로가 함께 쓰고 있어 그것을 else 안으로 옮기면
+     * 일정에서 온 경로의 방어가 사라지거나 같은 검사가 두 벌이 됩니다.
      *
      * 소유권 검증이 중복 조회보다 먼저 와야 합니다.
      * 중복 조회는 stopId 하나로만 찾으므로 남의 일정에 이미 기록이 있으면
@@ -115,6 +138,10 @@ public class VisitService {
 
         if (placeId == null || visitedAt == null) {
             throw new CustomException(CommonErrorCode.VALIDATION_FAILED);
+        }
+
+        if (stopId == null) {
+            petOwnershipValidator.verify(petId);
         }
 
         Verdict verdict = judge(placeId, petId);
