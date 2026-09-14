@@ -6,6 +6,7 @@ import com.pawtrail.user.application.dto.input.ItineraryCreateInput;
 import com.pawtrail.user.application.dto.input.ItineraryUpdateInput;
 import com.pawtrail.user.application.dto.output.ItineraryCardOutput;
 import com.pawtrail.user.application.dto.output.ItineraryCreateOutput;
+import com.pawtrail.user.application.support.PetOwnershipValidator;
 import com.pawtrail.user.domain.exception.UserErrorCode;
 import com.pawtrail.user.domain.model.ItineraryStop;
 import com.pawtrail.user.domain.model.VisitLog;
@@ -56,6 +57,7 @@ public class ItineraryService {
     private final PlaceProvider placeProvider;
     private final VerdictProvider verdictProvider;
     private final ReviewProvider reviewProvider;
+    private final PetOwnershipValidator petOwnershipValidator;
 
     /**
      * 장소를 일정에 담습니다.
@@ -73,6 +75,18 @@ public class ItineraryService {
      * 즐겨찾기처럼 "제약 위반을 예외로 못 잡아서" 조회하는 것이 아니라
      * 같은 항목을 두 번 만들지 않으려고 의도적으로 조회합니다.
      *
+     * 동반 동물은 담기 전에 소유권을 확인합니다.
+     * 여기 담긴 petId 가 일정 카드의 판정 기준이 되고,
+     * 다녀왔어요 를 누르면 그 값이 방문 기록의 판정 스냅샷으로 그대로 넘어갑니다.
+     * 남의 식별자가 들어오면 남의 반려동물 기준으로 판정을 받아보게 되므로
+     * 대표 반려동물 지정을 막아 두었던 것과 같은 자리입니다.
+     *
+     * 확인을 맨 앞에 둡니다.
+     * 이미 담아 둔 일정이면 저장하는 것이 없어 건너뛸 수도 있지만,
+     * 어느 경로에서는 확인하고 어느 경로에서는 안 하는 규칙이 되면
+     * 나중에 읽는 사람이 그 경계를 매번 따져야 합니다.
+     * 요청이 담고 온 값은 문 앞에서 봅니다.
+     *
      * 장소가 실제로 있는지는 확인하지 않습니다.
      * 담은 뒤에 사라지는 경우를 어차피 막을 수 없어 걸러내는 자리를 목록 조립 한 곳에 모았습니다.
      * 관리자가 잘못 묶인 소스를 분리하거나 재수집에서 두 장소가 합쳐지면
@@ -83,6 +97,8 @@ public class ItineraryService {
      */
     @Transactional
     public ItineraryCreateOutput add(UUID accountId, ItineraryCreateInput input) {
+        petOwnershipValidator.verify(input.petId());
+
         LocalDateTime visitAt = input.visitAt();
 
         Optional<ItineraryStop> already = itineraryStopRepository
@@ -169,6 +185,11 @@ public class ItineraryService {
      * 담기는 그 상태를 멱등으로 접지만 수정은 두 행을 하나로 합칠 수 없습니다.
      * 담기에서 막아 둔 것을 수정으로 만들 수 있으면 규칙이 서 있지 않게 됩니다.
      *
+     * 동반 동물은 요청이 값을 보냈을 때만 확인합니다.
+     * 안 보내면 담을 때 확인이 끝난 값을 그대로 두는 것이라 다시 물을 이유가 없고,
+     * 메모만 고치는 요청까지 pet 을 부르게 됩니다.
+     * 세 필드가 모두 선택이라 이 분기가 이미 아래에 있고 같은 조건을 씁니다.
+     *
      * visitOrder 는 건드리지 않습니다.
      * 정렬이 visit_at 을 먼저 보므로 시각을 고치면 자리가 저절로 옮겨지고,
      * 같은 날 안에 머무르므로 그날 마지막 + 1 이라는 규칙도 깨지지 않습니다.
@@ -177,6 +198,10 @@ public class ItineraryService {
     public void update(UUID accountId, UUID stopId, ItineraryUpdateInput input) {
         ItineraryStop stop = itineraryStopRepository.findByIdAndAccountId(stopId, accountId)
                 .orElseThrow(() -> new CustomException(UserErrorCode.ITINERARY_NOT_FOUND));
+
+        if (input.petIdProvided()) {
+            petOwnershipValidator.verify(input.petId());
+        }
 
         LocalDateTime visitAt = input.visitAt() == null ? stop.getVisitAt() : input.visitAt();
         UUID petId = input.petIdProvided() ? input.petId() : stop.getPetId();

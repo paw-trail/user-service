@@ -45,7 +45,8 @@
                    │             │
                    │             ├──▶  place    lb://place-service     장소 이름 · 사진 · 좌표
                    │             ├──▶  verdict  lb://verdict-service   동반 가능 판정 · 준비물
-                   │             └──▶  review   lb://review-service    평점 · 후기 본문
+                   │             ├──▶  review   lb://review-service    평점 · 후기 본문
+                   │             └──▶  pet      lb://pet-service       반려동물 소유권 확인
                    │
                    └──▶  쿠키의 JWT 를 검증하고 X-User-Id · X-User-Role 을 붙여 넘김
                          user 는 토큰을 보지 않고 헤더만 믿음
@@ -65,12 +66,12 @@
 | Redis 키 종류 | 3종 | 최근 장소 · 요약 쿨다운 · 요약 하루 한도 |
 | 발행하는 이벤트 | **0개** | 발행자가 아닙니다 |
 | 받는 이벤트 | 2개 | `account.created` · `account.withdrawn` |
-| 부르는 우리 서비스 | 3개 | place · verdict · review |
+| 부르는 우리 서비스 | 4개 | place · verdict · review · pet |
 | 부르는 바깥 시스템 | 2개 | AWS S3 · OpenAI |
 | 서비스 클래스 | 7개 | [6-3](#6-3-서비스-클래스-7개--누가-무엇을-하나) |
-| 에러 코드 | 7개 | [4-11](#4-11-에러-코드) |
-| 자바 파일 | 97개 | 테스트 7개 별도 |
-| 테스트 | 93개 | 서비스 6개 + `contextLoads` |
+| 에러 코드 | 9개 | [4-11](#4-11-에러-코드) |
+| 자바 파일 | 100개 | 테스트 9개 별도 |
+| 테스트 | 104개 | 서비스 6개 + 검증기 1개 + provider 1개 + `contextLoads` |
 
 ---
 
@@ -224,10 +225,12 @@ docker compose up -d
 | `platform` | config-server · eureka-server · gateway-server |
 | `tools` | kafka-ui (`:9000`) |
 | `observability` | prometheus · loki · zipkin · grafana |
-| `app` | 컨테이너로 도는 도메인 서비스 (지금은 auth 뿐) |
+| `app` | 컨테이너로 도는 도메인 서비스 (auth · user · place · pet) |
 
-> **`user-service` 는 아직 `app` 프로파일에 없습니다.** 이미지를 굽고 나서 넣습니다.
-> 그때까지는 IntelliJ 로 띄웁니다.
+> **`user-service` 는 `app` 프로파일에 들어 있습니다.** 이미지가 `ghcr.io/paw-trail/user-service`
+> 에 올라가 있어 `docker compose up -d user-service` 로 뜹니다.
+> 코드를 고쳐 가며 볼 때는 컨테이너를 내리고 IntelliJ 로 띄웁니다.
+> ⛔ **한쪽은 컨테이너, 한쪽은 IntelliJ 로 섞어 띄우면 유레카 주소가 어긋납니다.** 컨테이너가 내부 주소로 등록해 호스트에서 도는 쪽이 `lb://` 로 그것을 부르지 못합니다.
 
 <br><br>
 
@@ -285,8 +288,9 @@ docker compose up -d
 
 ### 1-4. 스텁 서버 3개
 
-**place · verdict · review 는 아직 만들어지지 않았습니다.** 그런데 이 서비스의 목록
-API 는 그 셋을 부릅니다. 그래서 흉내 내는 작은 서버 셋을 따로 띄웁니다.
+**verdict 와 review 는 아직 만들어지지 않았습니다.** 그런데 이 서비스의 목록
+API 는 그 둘을 부릅니다. 그래서 흉내 내는 작은 서버를 따로 띄웁니다.
+place 와 pet 은 실물이 떠 있어 스텁이 없어도 됩니다.
 
 | 포트 | 흉내 내는 것 | 언제 필요한가 |
 |---|---|---|
@@ -313,7 +317,7 @@ API 는 그 셋을 부릅니다. 그래서 흉내 내는 작은 서버 셋을 �
 
 > **`petId` 를 안 보내면 `verdict` 스텁이 없어도 됩니다.** 판정 계산이
 > `petId == null` 이면 호출을 아예 건너뛰고 `UNKNOWN` 을 돌려주기 때문입니다.
-> 대표 반려동물 지정이 아직 막혀 있어 실제로도 언제나 `null` 입니다.
+> 다만 대표 반려동물을 지정해 두면 목록 조회가 그 값으로 판정을 부르므로 스텁이 필요해집니다.
 
 <br><br>
 
@@ -687,12 +691,32 @@ GET /api/v1/favorites
 
 | 부르는 곳 | 무엇을 받나 | 어떻게 부르나 |
 |---|---|---|
-| place | `placeId` · `name` · `placeType` · `imageUrl` · `lat` · `lon` · `supplyPoint` | 식별자 목록을 한 번에 |
-| verdict | 판정값 · `requiredItems` | 식별자 목록 + 대표 펫 하나 |
+| place | `placeId` · `name` · `placeType` · `imageUrl` · `lat` · `lon` · `supplyPoint` | 식별자 목록을 **100개씩** |
+| verdict | 판정값 · `requiredItems` | 식별자 목록을 **500개씩** + 대표 펫 하나 |
 | review | `ratingAvg` | 식별자 목록을 한 번에 |
 | favorite (자기 표) | 담아 둔 `place_id` 집합 | 화면에 따라 부르거나 안 부름 |
 
-> **전부 목록으로 한 번에 부릅니다.** 장소마다 부르면 20곳짜리 목록에 호출이 20번입니다.
+> **전부 목록으로 부릅니다.** 장소마다 부르면 20곳짜리 목록에 호출이 20번입니다.
+
+---
+
+**⛔다만 한 번에 다 보내지는 못합니다.**
+
+```
+place    GET /internal/places?ids=      @Size(max = 100)   넘으면 400
+verdict  POST /internal/verdicts/batch  placeIds 500건     넘으면 400
+review   GET /internal/reviews/stats    상한 없음
+```
+
+| | 왜 상한이 있나 |
+|---|---|
+| place | 식별자가 **주소에 실려** 하나에 41바이트. Tomcat 이 8KB 까지만 받아 180개가 천장 |
+| verdict | 본문으로 보내 길이 문제는 없으나 **판정 계산량**이 건수에 비례함 |
+
+> **그래서 두 provider 가 안에서 잘라 여러 번 부릅니다.** 나눠 부르는 것이 부르는 쪽에
+> 드러나지 않습니다 — 도메인은 장소 목록을 넘기고 `Map` 을 받을 뿐입니다.
+> ⛔ **어느 한 묶음이라도 실패하면 나머지를 포기합니다.** 성공분만 모으면
+> *장애로 못 받아온 것*과 *진짜 없어진 장소*가 화면에서 똑같이 보입니다.
 
 <br><br>
 
@@ -880,7 +904,7 @@ OpenAI   defaultRestClientBuilder + 전용 타임아웃 20초
 | 1 | GET | `/api/v1/users/me` | 필요 | 프로필 + 통계 셋 |
 | 2 | PATCH | `/api/v1/users/me` | 필요 | 닉네임 · 사진 수정 |
 | 3 | POST | `/api/v1/users/me/upload-url` | 필요 | 사진 업로드 주소 발급 |
-| 4 | PATCH | `/api/v1/users/me/default-pet` | 필요 | 대표 반려동물. **지금은 해제만** |
+| 4 | PATCH | `/api/v1/users/me/default-pet` | 필요 | 대표 반려동물 지정·해제 |
 | 5 | GET | `/api/v1/favorites` | 필요 | 즐겨찾기 목록 |
 | 6 | POST | `/api/v1/favorites` | 필요 | 담기. **멱등** |
 | 7 | DELETE | `/api/v1/favorites/{placeId}` | 필요 | 해제. **멱등** |
@@ -1053,22 +1077,63 @@ users/{accountId}/profile        확장자 없음
 
 ---
 
-### 4-5. `PATCH /users/me/default-pet` — ⛔지금은 해제만 됩니다
+### 4-5. `PATCH /users/me/default-pet` — 지정하기 전에 소유권을 봅니다
 
 | 요청 | 결과 |
 |---|---|
-| `{"petId": null}` | 대표 해제. 정상 |
-| `{"petId": "..."}` | ⛔`400 VALIDATION_FAILED` |
+| `{"petId": null}` | 대표 해제. **pet 을 부르지 않음** |
+| `{"petId": "내 반려동물"}` | 지정됨 |
+| `{"petId": "남의 반려동물"}` | `404 PET_NOT_FOUND` |
+| pet 이 안 떠 있음 | `502 PET_UNAVAILABLE` |
 
 ```
 default_pet_id 는 소유권 검증을 우회하는 경로임
    │
    └──▶ verdict 를 부를 때 petIds 를 생략하면 서버가 이 값을 씀
         남의 petId 를 저장해 두면 그 반려동물 기준으로 판정을 받아볼 수 있음
+        알림도 이 값을 기준으로 삼는데 그때는 브라우저가 없어 파라미터가 올 자리도 없음
 ```
 
-> **pet 서비스가 없어 *"이 펫이 정말 내 것인가"* 를 확인할 수단이 없습니다.**
-> 못 하면 막는 것이 맞다고 보아 닫아 두었습니다. 코드에 `TODO(pet 착수 시)` 주석이 있습니다.
+> **오래 막아 두었던 자리입니다.** 프로필 API 를 만들 때 확인할 수단이 없어 `400` 으로 닫았고,
+> 외부 호출 기반이 선 뒤에도 열지 못했습니다. 기반이 있는 것과 물어볼 상대가 있는 것이 다르기 때문입니다.
+> pet 서비스가 생기면서 조건이 충족되었습니다.
+
+---
+
+**확인은 `PetOwnershipValidator` 가 합니다.**
+
+```
+petId == null      아무것도 안 함.  해제 요청이라 물어볼 것이 없음
+pet 이 200         내 것.  통과
+pet 이 404         없거나 남의 것   →  404 PET_NOT_FOUND
+그 밖의 실패        못 물어봄        →  502 PET_UNAVAILABLE
+```
+
+| | 왜 |
+|---|---|
+| 404 를 그대로 전함 | pet 이 없는 것과 남의 것을 한 코드로 답해 **우리도 둘을 가릴 수 없음** |
+| `403` 을 안 씀 | *"그 `petId` 는 있는데 네 것이 아니다"* 를 알려주는 셈이라 식별자를 넣어 보며 캐낼 수 있음 |
+| 실패를 따로 가름 | 장애를 입력 오류로 뭉개면 **서버가 죽은 것을 아무도 못 알아챔** |
+
+> **같은 검사를 네 자리가 씁니다.** 여기와 일정 담기·일정 수정·즉흥 방문 기록입니다.
+> 검사가 *"값이 없으면 건너뛴다"* 와 *"아니면 던진다"* 두 조각이라 각자 두면 규칙이 바뀔 때 네 곳을 고쳐야 합니다.
+
+---
+
+**지운 반려동물이 대표로 남는 경우는 서버가 정리하지 않습니다.**
+
+```
+pet 에서 반려동물을 지움
+   │
+   ├──▶ 프론트가 그것이 대표였으면 이 API 를 null 로 한 번 더 부름
+   │
+   └──▶ 빠뜨리면 default_pet_id 가 없는 식별자를 가리킴
+            판정이 UNKNOWN 이나 null 로 떨어질 뿐 화면은 깨지지 않음
+            사용자가 대표를 다시 지정하면 풀림
+```
+
+> ⛔ **`pet.profile.updated` 를 구독하는 방법은 쓸 수 없습니다.** 그 이벤트의 payload 에
+> 삭제와 수정을 가를 필드가 없습니다. 읽을 때마다 확인하는 방법은 목록 조회마다 pet 호출이 하나씩 더 붙습니다.
 
 <br><br>
 
@@ -1146,6 +1211,8 @@ favorite 표 (created_at 최신순)  ──▶  place · verdict · review 를 �
 | 남의 일정이거나 없음 | `404 RESOURCE_NOT_FOUND` |
 | 판정 호출 실패 | `502 VERDICT_UNAVAILABLE` |
 | 즉흥인데 `placeId`·`visitedAt` 이 없음 | `400 VALIDATION_FAILED` |
+| 즉흥인데 `petId` 가 남의 것 | `404 PET_NOT_FOUND` |
+| pet 을 부르지 못함 | `502 PET_UNAVAILABLE` |
 
 ---
 
@@ -1360,10 +1427,12 @@ ORDER BY visit_at,  visit_order
 
 ### 4-11. 에러 코드
 
-**이 서비스가 만든 것 7개입니다.**
+**이 서비스가 만든 것 9개입니다.**
 
 | 코드 | 상태 | 메시지 | 어디서 |
 |---|---|---|---|
+| `PET_NOT_FOUND` | 404 | 반려동물을 찾을 수 없습니다 | 대표 지정 · 일정 담기·수정 · 즉흥 방문 |
+| `PET_UNAVAILABLE` | 502 | 반려동물 정보를 확인하지 못했습니다 | 같은 네 자리 |
 | `VERDICT_UNAVAILABLE` | 502 | 판정을 불러오지 못해 기록하지 못했습니다 | `POST /visits` |
 | `VISIT_NOT_FOUND` | 404 | 이미 삭제되었거나 없는 기록입니다 | `DELETE /visits/{id}` |
 | `ITINERARY_NOT_FOUND` | 404 | 이미 삭제되었거나 없는 일정입니다 | `PATCH` · `DELETE /itineraries/{id}` |
@@ -1391,8 +1460,11 @@ ORDER BY visit_at,  visit_order
    ├── RESOURCE_NOT_FOUND 의 메시지는 "요청하신 경로를 찾을 수 없습니다"
    │      기록 삭제에는 안 맞음  →  VISIT_NOT_FOUND 를 만듦
    │
-   └── 판정 실패에 EXTERNAL_API_ERROR 를 쓰면 place 실패와 코드가 같아짐
-          프론트가 안내 문구를 못 가름  →  VERDICT_UNAVAILABLE 을 만듦
+   ├── 판정 실패에 EXTERNAL_API_ERROR 를 쓰면 place 실패와 코드가 같아짐
+   │      프론트가 안내 문구를 못 가름  →  VERDICT_UNAVAILABLE 을 만듦
+   │
+   └── 반려동물 호출 실패도 같음.  POST /visits 는 verdict 와 pet 을 둘 다 부름
+          코드가 같으면 어느 쪽이 죽었는지 응답만으로 못 가름  →  PET_UNAVAILABLE 을 만듦
 ```
 
 <br><br>
@@ -1826,7 +1898,7 @@ presentation   ──▶   application   ──▶   domain   ◀──   infras
 
 ---
 
-**패키지별 파일 수입니다. 전부 97개.**
+**패키지별 파일 수입니다. 전부 100개.**
 
 | 패키지 | 개수 | 무엇 |
 |---|---|---|
@@ -1839,14 +1911,15 @@ presentation   ──▶   application   ──▶   domain   ◀──   infras
 | `domain/model` | 6 | 엔티티 5 + 복합 키 1 |
 | `infrastructure/provider/internal/dto` | 5 | 받는 쪽 형태 |
 | `infrastructure/persistence/jpa` | 5 | 스프링 데이터 인터페이스 |
-| `domain/provider` | 5 | 부르는 약속 |
+| `domain/provider` | 6 | 부르는 약속 |
 | `application/dto/input` | 5 | |
 | `infrastructure/config` | 4 | S3 · LLM 설정 |
 | `domain/provider/dto` | 4 | 도메인이 보는 형태 |
-| `infrastructure/provider/internal` | 3 | place · verdict · review |
+| `infrastructure/provider/internal` | 4 | place · verdict · review · pet |
 | `infrastructure/provider/external` | 2 (+dto 2) | S3 · OpenAI |
 | `infrastructure/message/kafka/consumer` | 2 (+dto 2) | 리스너 둘 |
-| `domain/exception` · `domain/enums` · `application/support` | 각 1 | 에러 코드 · 판정 enum · 커밋 후 실행기 |
+| `application/support` | 2 | 커밋 후 실행기 · 반려동물 소유권 검사 |
+| `domain/exception` · `domain/enums` | 각 1 | 에러 코드 · 판정 enum |
 
 <br><br>
 
@@ -1874,12 +1947,12 @@ auth 의 여덟 개가 예외 없이 그렇게 갈려 있어 그 규칙을 그�
 
 | 클래스 | 맡는 것 | 주입 |
 |---|---|---|
-| `UserProfileService` | 프로필 생성(이벤트) · 조회 · 수정 · 업로드 주소 · 대표 펫 · 배치 조회 | 6 |
-| `FavoriteService` | 즐겨찾기 3개 + internal 조회 | 6 |
-| `VisitService` | 방문 기록 3개 | 6 |
+| `UserProfileService` | 프로필 생성(이벤트) · 조회 · 수정 · 업로드 주소 · 대표 펫 · 배치 조회 | 7 |
+| `FavoriteService` | 즐겨찾기 3개 + internal 조회 | 5 |
+| `VisitService` | 방문 기록 3개 | 8 |
 | `ItineraryService` | 일정 5개 | 6 |
 | `RecentPlaceService` | 최근 장소 2개 | 6 |
-| `DailySummaryService` | 하루 요약 | 8 |
+| `DailySummaryService` | 하루 요약 | 7 |
 | `AccountWithdrawnService` | **탈퇴 정리** | 9 |
 
 ---
@@ -1903,7 +1976,7 @@ UserProfileService 에 얹으면
 
 ---
 
-### 6-4. provider 5개
+### 6-4. provider 6개
 
 **도메인이 보는 약속과 그 구현이 갈려 있습니다.**
 
@@ -1912,6 +1985,7 @@ UserProfileService 에 얹으면
 | `PlaceProvider` | `internal/PlaceProviderImpl` | `lb://place-service` |
 | `VerdictProvider` | `internal/VerdictProviderImpl` | `lb://verdict-service` |
 | `ReviewProvider` | `internal/ReviewProviderImpl` | `lb://review-service` |
+| `PetProvider` | `internal/PetProviderImpl` | `lb://pet-service` |
 | `StorageProvider` | `external/S3StorageProvider` | AWS S3 |
 | `LlmProvider` | `external/LlmProviderImpl` | OpenAI |
 
@@ -1958,7 +2032,7 @@ infrastructure/provider/*/dto/       받는 쪽 형태        PlaceResponse · V
 
 ---
 
-### 6-6. 테스트 93개
+### 6-6. 테스트 104개
 
 | 파일 | 개수 | 무엇을 보나 |
 |---|---|---|
@@ -1968,11 +2042,16 @@ infrastructure/provider/*/dto/       받는 쪽 형태        PlaceResponse · V
 | `DailySummaryServiceTest` | 13 | 검사 순서 · 실패 시 되돌리기 · 갱신 |
 | `RecentPlaceServiceTest` | 12 | 카드 조립 · 없는 장소 · 판정 실패와 대표 없음의 구분 |
 | `FavoriteServiceTest` | 11 | 조립 · 실패 처리 · 멱등 |
+| `PetOwnershipValidatorTest` | 4 | 통과 · 남의 것 · 값이 없으면 안 부름 · 실패는 다른 코드 |
+| `PlaceProviderImplTest` | 7 | 경계 100·101 · 여러 묶음 · 중간 실패 · 일부 누락 · 빈 목록 |
 | `UserApplicationTests` | 1 | `contextLoads` |
 
 ```
 스프링 컨텍스트를 띄우는 것은 contextLoads 하나뿐
 나머지는 Mockito + AssertJ.  DB 도 Redis 도 안 띄움
+⛔PlaceProviderImplTest 만 다름 — MockRestServiceServer 로 HTTP 를 흉내 냄
+  나눠 부르는 일이 provider 안에서 일어나 목으로는 보이지 않기 때문임
+  spring-boot-starter-test 에 이미 들어 있어 의존성은 늘지 않음
 ```
 
 > **`AfterCommitExecutor` 만 목이 아니라 실제 객체를 넣습니다.** 그 클래스는
@@ -2525,9 +2604,11 @@ AfterCommitExecutor 가 실패를 잡아 삼키는 단위는 "넘겨받은 일 �
 > **담기 상한도 두지 않았습니다.** *"1~2년만 써도 200건은 금방 차고 여러 마리 키우면
 > 더 부족하다"* 는 판단이었습니다. **상한은 부하를 막는 장치가 아니라 사용자를 막는 벽**이 됩니다.
 
-> ⚠ **대가가 있습니다.** 건수가 커지면 place·verdict 배치와 응답 크기가 비례해 커지고
-> 막는 장치가 없습니다. 네 화면이 같은 카드라 **옮긴다면 함께 옮겨야 하고,**
+> ⚠ **대가가 있습니다.** 건수가 커지면 응답 크기가 비례해 커지고 막는 장치가 없습니다.
+> 네 화면이 같은 카드라 **옮긴다면 함께 옮겨야 하고,**
 > 그때 카테고리 칩 카운트용 집계 API 를 함께 정해야 합니다.
+> ✅ **호출 자체는 터지지 않습니다.** place 를 100개씩, verdict 를 500개씩 나눠 부르므로
+> 건수가 늘면 호출 횟수가 늘 뿐입니다. 담기 상한을 안 둔 결정이 여기에 기대고 있습니다.
 
 <br><br>
 
@@ -2542,7 +2623,7 @@ AfterCommitExecutor 가 실패를 잡아 삼키는 단위는 "넘겨받은 일 �
 | | 대표 한 마리 (고름) | `petIds[]` 를 받음 (버림) |
 |---|---|---|
 | 화면 | 즐겨찾기에 기준 변경 UI 가 없음 | 보낼 자리가 없음 |
-| 소유권 | 서버가 자기 값을 씀 | **pet 서비스가 없어 남의 `petId` 를 검증할 수단이 없음** |
+| 소유권 | 서버가 자기 값을 씀 | 보낼 자리를 열려면 **받은 `petId` 를 전부 pet 에 물어야 함** |
 | 표시 규칙 | 배지 하나 | 10마리면 카드 한 장에 배지가 10개. **아직 안 정해짐** |
 
 > **안 정해진 것을 응답 타입으로 못 박지 않기로 했습니다.** 나중에 여는 비용은
@@ -2790,9 +2871,8 @@ rm -f cookies.txt
 
 | | 무엇 | 언제 |
 |---|---|---|
-| 대표 반려동물 지정 | 지금은 해제만. `TODO(pet 착수 시)` 주석이 있음 | pet |
 | `GET /internal/reviews?accountId=&from=&to=` | **아직 없는 API.** 하루 요약의 재료 | review |
-| 스텁 3개 제거 | place · verdict · review 가 실제로 뜨면 | 셋 다 |
+| 스텁 2개 제거 | verdict · review 가 실제로 뜨면 | 둘 다 |
 
 <br><br>
 
@@ -2850,7 +2930,7 @@ auth 가 tokens_valid_from 을 올려도 게이트웨이는 서명만 보고 통
 
 | | |
 |---|---|
-| compose `app` 프로파일 | 이미지를 굽고 나서 넣습니다 |
+| 이미지 자동 배포 | 손으로 구워 밀고 있습니다. `app` 프로파일 등록은 끝났습니다 |
 | Jenkins 파이프라인 | 지금은 손으로 `buildx` 로 굽습니다 |
 | `processed_event` 정리 | 행이 무한히 쌓입니다. 지금 규모에서는 무방 |
 | Swagger | `/swagger-ui/**` 도 401 이라 **게이트웨이 뒤에서는 못 부릅니다** |
