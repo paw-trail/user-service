@@ -254,6 +254,14 @@ public class UserProfileService {
      * 같은 검사를 일정과 방문 기록도 하므로 한 자리에 모아 두었습니다.
      * 해제 요청은 그 안에서 걸러져 pet 을 부르지 않습니다.
      *
+     * 프로필을 먼저 찾고 그다음에 소유권을 확인합니다.
+     * 주체가 없으면 대상을 물을 이유가 없기 때문입니다.
+     * 가입 직후처럼 프로필이 아직 없는 상태가 실제로 있는데,
+     * 그때 pet 을 먼저 부르면 RESOURCE_NOT_FOUND 로 나가야 할 응답이
+     * PET_NOT_FOUND 나 PET_UNAVAILABLE 로 나갑니다.
+     * 프론트가 "잠깐 뒤에 다시" 와 "그 반려동물이 없다" 를 가려야 하는데 구분할 수 없게 됩니다.
+     * 조회가 데이터베이스 한 번이고 확인이 서비스 호출이라 값싼 쪽이 앞에 오기도 합니다.
+     *
      * 지운 반려동물이 대표로 남는 경우는 여기서 다루지 않습니다.
      * 프론트가 삭제한 것이 대표였으면 이 API 를 null 로 한 번 더 부릅니다.
      * 빠뜨려도 판정이 UNKNOWN 이나 null 로 떨어질 뿐 화면이 깨지지 않고,
@@ -261,9 +269,9 @@ public class UserProfileService {
      */
     @Transactional
     public void changeDefaultPet(UUID accountId, UUID petId) {
-        petOwnershipValidator.verify(petId);
-
         UserProfile profile = getOrThrow(accountId);
+
+        petOwnershipValidator.verify(petId);
 
         profile.changeDefaultPet(petId);
 

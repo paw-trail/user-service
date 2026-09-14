@@ -86,6 +86,17 @@ public class VisitService {
      * 화면에 보낼 자리가 없다는 것을 근거로 삼지 않기로 한 그 기준입니다.
      * 여기서 저장하는 판정은 나중에 고치는 API 가 없어 틀린 값이 영구히 남습니다.
      *
+     * 다만 필수값 검사보다는 뒤에 둡니다.
+     * placeId 와 visitedAt 에 @NotNull 을 걸지 않았습니다.
+     * 일정에서 오면 안 보내는 값이라 조건부로만 필수이고 애노테이션으로는 표현할 수 없어,
+     * 두 값이 비었는지를 여기서 봅니다.
+     * 그 검사보다 앞에서 pet 을 부르면 요청 자체가 성립하지 않는데도 남의 서비스를 먼저 부르고,
+     * 그 호출이 실패하면 VALIDATION_FAILED 로 나가야 할 응답이 PET_UNAVAILABLE 로 나갑니다.
+     *
+     * 그래서 else 로 묶지 않고 stopId == null 을 한 번 더 봅니다.
+     * 필수값 검사를 두 경로가 함께 쓰고 있어 그것을 else 안으로 옮기면
+     * 일정에서 온 경로의 방어가 사라지거나 같은 검사가 두 벌이 됩니다.
+     *
      * 소유권 검증이 중복 조회보다 먼저 와야 합니다.
      * 중복 조회는 stopId 하나로만 찾으므로 남의 일정에 이미 기록이 있으면
      * 그 사람의 visitId 가 그대로 응답에 실려 나갑니다.
@@ -123,13 +134,14 @@ public class VisitService {
             placeId = stop.getPlaceId();
             visitedAt = stop.getVisitAt();
             petId = stop.getPetId();
-
-        } else {
-            petOwnershipValidator.verify(petId);
         }
 
         if (placeId == null || visitedAt == null) {
             throw new CustomException(CommonErrorCode.VALIDATION_FAILED);
+        }
+
+        if (stopId == null) {
+            petOwnershipValidator.verify(petId);
         }
 
         Verdict verdict = judge(placeId, petId);
