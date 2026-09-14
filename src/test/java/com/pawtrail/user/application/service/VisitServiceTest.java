@@ -13,6 +13,7 @@ import com.pawtrail.common.exception.CustomException;
 import com.pawtrail.user.application.dto.input.VisitCreateInput;
 import com.pawtrail.user.application.dto.output.VisitCardOutput;
 import com.pawtrail.user.application.dto.output.VisitCreateOutput;
+import com.pawtrail.user.application.support.PetOwnershipValidator;
 import com.pawtrail.user.domain.enums.Verdict;
 import com.pawtrail.user.domain.exception.UserErrorCode;
 import com.pawtrail.user.domain.model.DailySummary;
@@ -80,6 +81,11 @@ class VisitServiceTest {
 
     @Mock
     private ReviewProvider reviewProvider;
+
+    // 검증 자체는 PetOwnershipValidatorTest 가 봄
+    // 여기서는 아무 일도 하지 않는 목이라 기존 검사가 그대로 지나감
+    @Mock
+    private PetOwnershipValidator petOwnershipValidator;
 
     @InjectMocks
     private VisitService visitService;

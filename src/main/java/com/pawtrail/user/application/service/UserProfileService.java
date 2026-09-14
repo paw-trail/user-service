@@ -6,6 +6,7 @@ import com.pawtrail.user.application.dto.input.ProfileUpdateInput;
 import com.pawtrail.user.application.dto.output.ProfileOutput;
 import com.pawtrail.user.application.dto.output.UploadUrlOutput;
 import com.pawtrail.user.application.dto.output.UserSummaryOutput;
+import com.pawtrail.user.application.support.PetOwnershipValidator;
 import com.pawtrail.user.domain.model.UserProfile;
 import com.pawtrail.user.domain.provider.ReviewProvider;
 import com.pawtrail.user.domain.provider.StorageProvider;
@@ -43,6 +44,7 @@ public class UserProfileService {
     private final StorageProvider storageProvider;
     private final StorageProperties storageProperties;
     private final ReviewProvider reviewProvider;
+    private final PetOwnershipValidator petOwnershipValidator;
 
     /**
      * account.created 를 받아 프로필을 만듭니다.
@@ -234,43 +236,42 @@ public class UserProfileService {
     /**
      * 대표 반려동물을 바꿉니다.
      *
-     * 지금은 해제만 됩니다. 값을 보내면 400 입니다.
+     * 값을 보내면 지정하고 null 을 보내면 해제합니다.
      *
-     * 그 petId 가 실제로 있는지, 이 사람 것인지를 확인할 방법이 아직 없기 때문입니다.
-     * pet 서비스를 호출해야 하는데 그 서비스도, 서비스 간 호출 기반도 아직 없습니다.
+     * 지정에는 소유권 확인이 반드시 앞섭니다.
+     * 이 컬럼이 소유권 검증을 우회하는 경로이기 때문입니다.
+     * 판정을 부를 때 petIds 를 생략한 요청은 서버가 이 값을 쓰므로,
+     * 남의 식별자가 여기 들어오면 그 반려동물 기준으로 판정을 받아볼 수 있습니다.
+     * 알림도 이 값을 기준으로 삼는데 그때는 브라우저가 없어 파라미터가 올 자리도 없습니다.
      *
-     * 확인하지 못하는 값을 저장하면 남의 반려동물 식별자가 여기 들어올 수 있습니다.
-     * 그러면 검색과 판정이 그 반려동물 기준으로 돌아갑니다.
-     * petIds 를 생략한 요청은 서버가 이 값을 쓰기 때문입니다.
-     * GET /internal/pets?ids= 에 소유권 검증을 필수로 둔 것과 같은 이유이고,
-     * 이 컬럼은 그 검증을 우회하는 경로가 됩니다.
-     *
-     * 지금 막아도 화면이 막히지 않습니다.
-     * pet 서비스가 없어 지정할 반려동물 자체가 존재하지 않습니다.
-     *
-     * TODO(pet 착수 시): 이 블록을 PetProvider 검증 호출로 바꿉니다.
-     *
+     * 오래 막아 두었던 자리입니다.
+     * 프로필 API 를 만들 때 확인할 수단이 없어 400 으로 닫았고,
      * 외부 호출 기반이 선 뒤에도 열지 못했습니다.
-     * 기반이 있는 것과 검증할 대상이 있는 것이 다르기 때문입니다.
-     * 이 이슈가 부르는 셋(place · verdict · review)은 소유권 개념이 없는 조회이고,
-     * 여기서 물어야 하는 것은 "이 펫이 정말 이 사람 것인가" 입니다.
-     * 그것을 답해 줄 pet 서비스가 아직 없습니다.
+     * 기반이 있는 것과 물어볼 상대가 있는 것이 다르기 때문입니다.
+     * pet 서비스가 생기면서 조건이 충족되었습니다.
      *
-     * 그때까지 열어 두면 검증을 붙이는 것을 잊어도 드러나지 않습니다.
+     * 확인은 PetOwnershipValidator 가 합니다.
+     * 같은 검사를 일정과 방문 기록도 하므로 한 자리에 모아 두었습니다.
+     * 해제 요청은 그 안에서 걸러져 pet 을 부르지 않습니다.
+     *
+     * 지운 반려동물이 대표로 남는 경우는 여기서 다루지 않습니다.
+     * 프론트가 삭제한 것이 대표였으면 이 API 를 null 로 한 번 더 부릅니다.
+     * 빠뜨려도 판정이 UNKNOWN 이나 null 로 떨어질 뿐 화면이 깨지지 않고,
+     * 사용자가 대표를 다시 지정하면 풀립니다.
      */
     @Transactional
     public void changeDefaultPet(UUID accountId, UUID petId) {
-        if (petId != null) {
-            log.warn("대표 반려동물 지정을 아직 지원하지 않습니다: accountId={}, petId={}",
-                    accountId, petId);
-            throw new CustomException(CommonErrorCode.VALIDATION_FAILED);
-        }
+        petOwnershipValidator.verify(petId);
 
         UserProfile profile = getOrThrow(accountId);
 
-        profile.changeDefaultPet(null);
+        profile.changeDefaultPet(petId);
 
-        log.info("대표 반려동물을 해제했습니다: accountId={}", accountId);
+        if (petId == null) {
+            log.info("대표 반려동물을 해제했습니다: accountId={}", accountId);
+        } else {
+            log.info("대표 반려동물을 지정했습니다: accountId={}, petId={}", accountId, petId);
+        }
     }
 
     /**

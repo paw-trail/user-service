@@ -5,6 +5,7 @@ import com.pawtrail.common.exception.CustomException;
 import com.pawtrail.user.application.dto.input.VisitCreateInput;
 import com.pawtrail.user.application.dto.output.VisitCardOutput;
 import com.pawtrail.user.application.dto.output.VisitCreateOutput;
+import com.pawtrail.user.application.support.PetOwnershipValidator;
 import com.pawtrail.user.domain.enums.Verdict;
 import com.pawtrail.user.domain.exception.UserErrorCode;
 import com.pawtrail.user.domain.model.DailySummary;
@@ -60,6 +61,7 @@ public class VisitService {
     private final PlaceProvider placeProvider;
     private final VerdictProvider verdictProvider;
     private final ReviewProvider reviewProvider;
+    private final PetOwnershipValidator petOwnershipValidator;
 
     /**
      * 방문을 기록합니다.
@@ -73,6 +75,16 @@ public class VisitService {
      * 기본 키를 애플리케이션이 만들어 넣어 INSERT 가 커밋 직전에 나가고,
      * 앞당겨도 그 예외가 트랜잭션에 rollback-only 를 남겨 커밋이 거부됩니다.
      * 즐겨찾기에서 실물로 겪고 조회 방식으로 바꾼 자리입니다.
+     *
+     * 동반 동물의 소유권은 즉흥 방문일 때만 확인합니다.
+     * 일정에서 온 방문은 petId 를 그 일정 행에서 가져오는데,
+     * 그 값은 일정에 담을 때 이미 확인이 끝났습니다.
+     * 여기서 다시 물으면 다녀왔어요 를 누를 때마다 pet 을 한 번 더 부르게 됩니다.
+     *
+     * 즉흥 방문은 요청이 보낸 petId 를 그대로 쓰므로 반드시 확인해야 합니다.
+     * 그 버튼이 아직 화면에 없지만 API 는 열려 있어 직접 부르면 통과합니다.
+     * 화면에 보낼 자리가 없다는 것을 근거로 삼지 않기로 한 그 기준입니다.
+     * 여기서 저장하는 판정은 나중에 고치는 API 가 없어 틀린 값이 영구히 남습니다.
      *
      * 소유권 검증이 중복 조회보다 먼저 와야 합니다.
      * 중복 조회는 stopId 하나로만 찾으므로 남의 일정에 이미 기록이 있으면
@@ -111,6 +123,9 @@ public class VisitService {
             placeId = stop.getPlaceId();
             visitedAt = stop.getVisitAt();
             petId = stop.getPetId();
+
+        } else {
+            petOwnershipValidator.verify(petId);
         }
 
         if (placeId == null || visitedAt == null) {
