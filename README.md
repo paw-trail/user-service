@@ -225,7 +225,7 @@ docker compose up -d
 | `platform` | config-server · eureka-server · gateway-server |
 | `tools` | kafka-ui (`:9000`) |
 | `observability` | prometheus · loki · zipkin · grafana |
-| `app` | 컨테이너로 도는 도메인 서비스 (auth · user · place · pet) |
+| `app` | 컨테이너로 도는 도메인 서비스 (auth · user · place · pet · policy) |
 
 > **`user-service` 는 `app` 프로파일에 들어 있습니다.** 이미지가 `ghcr.io/paw-trail/user-service`
 > 에 올라가 있어 `docker compose up -d user-service` 로 뜹니다.
@@ -2111,7 +2111,7 @@ src/main/resources/application.yml        세 줄만
 |---|---|
 | `server.port: 8082` | 2 |
 | `spring.datasource.url` · `username: user_svc` | 2 |
-| `spring.datasource.password` | 1 (계정 10개가 같은 값) |
+| `spring.datasource.password` | 1 (서비스 계정이 모두 같은 값) |
 | `app.datasource.host` | 3 (`${DB_HOST}`) |
 | `app.storage.*` | 2 |
 | `app.llm.*` | 2 |
@@ -2911,16 +2911,26 @@ auth 가 tokens_valid_from 을 올려도 게이트웨이는 서명만 보고 통
 
 ---
 
-**공통 모듈에 예외 핸들러가 셋 빠져 있습니다.**
+**✅공통 모듈의 예외 핸들러 셋은 `0.0.14` 에서 채워졌습니다.**
 
-| 예외 | 지금 | 맞는 것 |
+| 예외 | 0.0.13 까지 | 지금 |
 |---|---|---|
-| `HttpMessageNotReadableException` | **500** | 400. 본문 형식이 틀린 것은 클라이언트 잘못 |
-| `HttpRequestMethodNotSupportedException` | 500 | 405 |
-| `MethodArgumentTypeMismatchException` | **응답 본문이 비어 나감** | 공통 형식 |
+| `HttpMessageNotReadableException` | **500** | **400** `VALIDATION_FAILED` |
+| `HttpRequestMethodNotSupportedException` | 500 | **405** `METHOD_NOT_ALLOWED` |
+| `MethodArgumentTypeMismatchException` | 응답 본문이 비어 나감 | **400** · 공통 형식 |
 
-> ⛔ **요청 본문의 UUID 자리에 형식이 다른 값이 오면 500 이 납니다.**
-> 실제로 검증 중에 겪었습니다. 공통 모듈을 다음에 손볼 때 함께 처리합니다.
+```
+공통 모듈 0.0.14
+   GlobalExceptionHandler 가 5개 → 10개
+   CommonErrorCode 에 METHOD_NOT_ALLOWED(405) 신설
+```
+
+> **요청 본문의 UUID 자리에 형식이 다른 값이 오면 500 이 나던 자리입니다.**
+> 검증 중에 겪었고, 공통 모듈에서 닫힌 뒤 이 서비스가 `gradle.properties` 의
+> `commonVersion` 을 올려 받았습니다.
+
+> ⚠ **아직 `0.0.13` 인 서비스는 그대로입니다.** 지금은 `auth` 와 `ingest` 가 해당하며,
+> 그 레포를 다음에 열 때 같은 한 줄을 올립니다.
 
 <br><br>
 
