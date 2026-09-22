@@ -14,8 +14,10 @@ import org.hibernate.annotations.SQLRestriction;
 /**
  * 프로필입니다.
  *
- * account.created 이벤트를 받아 만들어집니다.
- * 사용자가 직접 만드는 경로는 없습니다.
+ * 보통은 account.created 이벤트를 받아 만들어집니다.
+ * 그 이벤트를 아직 받지 못했으면 GET /users/me 가 닉네임 없이 만들고,
+ * 늦게 도착한 이벤트가 비어 있는 닉네임을 채웁니다.
+ * 사용자가 직접 만드는 API 는 없습니다.
  *
  * user_db 에서 소프트 딜리트를 하는 표는 이것 하나뿐입니다.
  * 나머지 넷은 하드 딜리트라 @SQLRestriction 도 여기에만 붙습니다.
@@ -84,9 +86,10 @@ public class UserProfile extends BaseEntity {
     }
 
     /**
-     * account.created 를 받아 프로필을 만듭니다.
+     * 프로필을 만듭니다.
      *
-     * 닉네임은 소셜 가입이면 비어서 옵니다.
+     * account.created 를 받았을 때와 GET /users/me 가 자가 복구할 때 부릅니다.
+     * 닉네임은 소셜 가입이면 비어서 오고, 자가 복구는 알 수 없어 비워서 넘깁니다.
      * 사진과 대표 반려동물은 이 시점에 있을 수가 없어 받지 않습니다.
      */
     public static UserProfile create(UUID accountId, String nickname) {
@@ -114,6 +117,31 @@ public class UserProfile extends BaseEntity {
             throw new IllegalArgumentException("닉네임은 지울 수 없습니다.");
         }
         this.nickname = nickname;
+    }
+
+    /**
+     * 비어 있는 닉네임을 가입 때 받은 값으로 채웁니다.
+     *
+     * GET /users/me 가 account.created 보다 먼저 닿으면 프로필이 닉네임 없이 만들어집니다.
+     * 가입 직후 자동 로그인한 화면이 소비보다 먼저 부르는 경우입니다.
+     * 늦게 도착한 이벤트가 이 메서드로 그 자리를 채웁니다.
+     *
+     * 닉네임이 이미 있으면 채우지 않습니다.
+     * 이 컬럼의 null 은 "아직 설정 안 함" 이라, 값이 있으면 사용자가 이미 정한 것입니다.
+     * 삭제 표시가 있는 행도 채우지 않습니다. 탈퇴로 신원을 지운 자리에 이름을 되살리면 안 됩니다.
+     *
+     * changeNickname 과 따로 둔 것은 조건이 다르기 때문입니다.
+     * 그쪽은 사용자가 고른 값으로 늘 바꾸고, 이쪽은 빈 자리일 때만 채웁니다.
+     *
+     * @param nickname 가입할 때 입력한 이름입니다. 소셜 가입은 null 이라 그때는 아무것도 하지 않습니다.
+     * @return 채웠으면 true 입니다.
+     */
+    public boolean fillNicknameIfAbsent(String nickname) {
+        if (nickname == null || this.nickname != null || isDeleted()) {
+            return false;
+        }
+        this.nickname = nickname;
+        return true;
     }
 
     /**
@@ -173,7 +201,8 @@ public class UserProfile extends BaseEntity {
      * 이미 탈퇴한 계정의 프로필이 뒤늦게 생깁니다.
      *
      * 그래서 계정 식별자만 채우고 삭제 시각을 찍은 행을 미리 만들어 둡니다.
-     * account.created 를 소비할 때 existsIncludingDeleted 가 이 행을 보고 멈춥니다.
+     * account.created 를 소비할 때 삭제 표시까지 보는 조회가 이 행을 보고 멈추고,
+     * GET /users/me 도 이 행을 보고 자가 복구하지 않고 404 로 끝냅니다.
      *
      * 닉네임을 치환하지 않고 비워 둡니다.
      * 치환의 목적이 auth 가 끊은 신원이 이쪽에 남지 않게 하는 것인데,

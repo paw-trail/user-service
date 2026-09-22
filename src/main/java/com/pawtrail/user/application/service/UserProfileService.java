@@ -16,9 +16,12 @@ import com.pawtrail.user.domain.repository.VisitLogRepository;
 import com.pawtrail.user.infrastructure.config.StorageProperties;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * 이벤트로 만드는 것과 API 로 읽고 고치는 것을 한 클래스에 모읍니다.
  * auth 도 AccountService 하나에 계정 관련 동작을 모았습니다.
+ *
+ * 없는 프로필을 조회 자리에서 만드는 일만 UserProfileRecoveryService 로 뗍니다.
+ * 이 클래스의 조회 트랜잭션과 경계가 달라야 하기 때문입니다. 까닭은 그 클래스에 적었습니다.
  *
  * @Transactional 을 클래스 단위로 붙이지 않습니다.
  * 이벤트 경로는 InboxProcessor.processOnce 가 이미 트랜잭션을 열고 있어
@@ -38,7 +44,14 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class UserProfileService {
 
+    // 이 표의 기본 키 제약 이름 — PostgreSQL 이 표 이름 뒤에 _pkey 를 붙여 만든 기본값
+    private static final String PRIMARY_KEY_CONSTRAINT = "user_profile_pkey";
+
+    // 유일 · 기본 키 위반의 SQLState
+    private static final String UNIQUE_VIOLATION = "23505";
+
     private final UserProfileRepository userProfileRepository;
+    private final UserProfileRecoveryService userProfileRecoveryService;
     private final FavoriteRepository favoriteRepository;
     private final VisitLogRepository visitLogRepository;
     private final StorageProvider storageProvider;
@@ -49,53 +62,149 @@ public class UserProfileService {
     /**
      * account.created 를 받아 프로필을 만듭니다.
      *
-     * 이미 있으면 아무 것도 하지 않고 넘어갑니다.
-     * 두 가지 경우가 여기에 걸립니다.
+     * 행의 상태를 삭제 표시까지 보는 조회 한 번으로 셋으로 가릅니다.
      *
-     *   같은 이벤트가 두 번 처리되려는 경우
-     *     processed_event 가 먼저 걸러 주므로 사실상 오지 않지만,
-     *     기본 키 충돌로 실패하는 것보다 조용히 넘어가는 편이 낫습니다.
+     *   없음
+     *     만듭니다. 보통의 가입 경로입니다.
      *
-     *   탈퇴가 먼저 처리된 경우
+     *   삭제 표시
+     *     만들지 않고 넘어갑니다.
      *     account.created 가 발행에 실패해 멈춰 있는 사이 사용자가 탈퇴하면
-     *     account.withdrawn 이 먼저 도착합니다.
-     *     그때 탈퇴 소비자가 account_id 만 채우고 deleted_at 을 찍은 행을 만들어 두므로,
-     *     나중에 재발행된 account.created 가 도착해도 여기서 멈춥니다.
-     *     막지 않으면 탈퇴한 계정의 프로필이 뒤늦게 생겨 아무 API 에도 안 잡히는
-     *     고아 행으로 남습니다.
+     *     account.withdrawn 이 먼저 도착해 삭제 표시 행을 만들어 둡니다.
+     *     여기서 막지 않으면 탈퇴한 계정의 프로필이 뒤늦게 생겨
+     *     아무 API 에도 안 잡히는 고아 행으로 남습니다.
      *
-     * 존재 확인에 findById 를 쓰지 않는 이유는 UserProfile 에 걸린
-     * @SQLRestriction("deleted_at IS NULL") 이 삭제 표시 행을 가리기 때문입니다.
-     * 그 제한을 우회하는 existsIncludingDeleted 를 씁니다.
+     *   살아 있음
+     *     GET /users/me 가 이 이벤트보다 먼저 닿아 닉네임 없이 만들어 둔 경우입니다.
+     *     가입 직후 자동 로그인한 화면이 소비보다 먼저 부르면 이렇게 됩니다.
+     *     닉네임이 비어 있을 때만 가입 때 받은 닉네임을 채웁니다.
+     *     비어 있지 않으면 사용자가 이미 정한 값이라 덮지 않습니다.
+     *     같은 이벤트가 두 번 오는 경우도 여기에 걸리는데, processed_event 가 먼저 걸러 사실상 오지 않습니다.
+     *
+     * 만들 때는 save 가 아니라 create 로 INSERT 만 합니다.
+     * 기본 키를 이벤트가 주므로 save 는 merge 로 돌아, 그 사이 GET /users/me 가 만든 행이 있으면
+     * 오류 없이 그 행을 덮어씁니다. INSERT 로 넣으면 기본 키 충돌로 실패하고,
+     * 카프카가 다시 보낸 이벤트가 위 「살아 있음」 갈래로 들어와 닉네임을 채웁니다.
      */
     public void createFromAccountCreated(UUID accountId, String nickname) {
-        if (userProfileRepository.existsIncludingDeleted(accountId)) {
-            log.info("이미 처리된 계정입니다. 프로필을 만들지 않습니다: accountId={}", accountId);
+        Optional<UserProfile> found = userProfileRepository.findByIdIncludingDeleted(accountId);
+
+        if (found.isEmpty()) {
+            userProfileRepository.create(UserProfile.create(accountId, nickname));
+            log.info("프로필을 만들었습니다: accountId={}", accountId);
             return;
         }
 
-        userProfileRepository.save(UserProfile.create(accountId, nickname));
+        UserProfile profile = found.get();
 
-        log.info("프로필을 만들었습니다: accountId={}", accountId);
+        if (profile.isDeleted()) {
+            log.info("이미 탈퇴 처리된 계정입니다. 프로필을 만들지 않습니다: accountId={}", accountId);
+            return;
+        }
+
+        if (profile.fillNicknameIfAbsent(nickname)) {
+            log.info("먼저 만들어진 프로필에 가입 닉네임을 채웠습니다: accountId={}", accountId);
+            return;
+        }
+
+        log.info("이미 프로필이 있습니다. 그대로 둡니다: accountId={}", accountId);
     }
 
     /**
      * 마이페이지가 보는 프로필을 조립합니다.
      *
+     * 행이 아예 없으면 그 자리에서 닉네임 없이 만들어 돌려줍니다.
+     * 프로필을 만드는 경로가 account.created 소비 하나뿐이라,
+     * 그 이벤트가 유실되면 계정은 살아 있는데 프로필이 영영 생기지 않기 때문입니다.
+     * 가입 직후 이 요청이 소비보다 먼저 닿는 경우에도 여기서 만들어지고,
+     * 늦게 도착한 account.created 가 비어 있는 닉네임을 채웁니다.
+     *
+     * 삭제 표시 행이 있으면 만들지 않고 404 입니다.
+     * 탈퇴한 계정의 액세스 토큰이 만료 전까지 남아 이 요청이 올 수 있는데,
+     * 그때 프로필을 되살리면 탈퇴한 사람이 서비스를 계속 쓰게 됩니다.
+     *
+     * 삭제 표시까지 보는 조회 한 번으로 세 갈래를 가릅니다.
+     * findById 로는 "행이 없음" 과 "삭제 표시" 가 똑같이 빈 값으로 보여 둘을 가를 수 없습니다.
+     *
      * stats 셋 중 둘은 우리 표를 세고 reviewCount 만 review 서비스가 줍니다.
      * 그 서비스가 아직 없어 지금은 null 을 넣습니다.
      * 명세도 "호출 실패 시 null" 로 정해 두었으므로 프론트가 이 상태를 다룹니다.
      * 통계 하나 때문에 마이페이지가 안 뜨면 안 됩니다.
-     *
-     * 가입 직후에는 404 가 날 수 있습니다.
-     * 회원가입이 자동 로그인이라 account.created 를 처리하기 전에 이 요청이 닿을 수 있습니다.
-     * 실제 창은 밀리초라 프론트가 짧게 재시도하면 지나갑니다.
      */
     @Transactional(readOnly = true)
     public ProfileOutput getMyProfile(UUID accountId) {
-        UserProfile profile = getOrThrow(accountId);
+        UserProfile profile = userProfileRepository.findByIdIncludingDeleted(accountId)
+                .orElseGet(() -> recover(accountId));
+
+        if (profile.isDeleted()) {
+            throw new CustomException(CommonErrorCode.RESOURCE_NOT_FOUND);
+        }
 
         return toOutput(profile);
+    }
+
+    /**
+     * 없는 프로필을 만들어 돌려줍니다.
+     *
+     * 만드는 일은 UserProfileRecoveryService 가 새 트랜잭션에서 합니다.
+     * 이 조회 트랜잭션 안에서 기본 키 충돌을 잡으면 rollback-only 표시가 남아 커밋이 거부됩니다.
+     *
+     * 만드는 사이 다른 쪽이 먼저 만들었으면 기본 키가 부딪힙니다.
+     * 같은 계정의 GET /users/me 가 동시에 두 번 오거나, account.created 소비가 막 끝난 경우입니다.
+     * 그때는 먼저 생긴 행을 다시 읽어 돌려줍니다.
+     * 먼저 생긴 행이 삭제 표시면 부르는 쪽이 404 로 끝냅니다.
+     *
+     * 다시 읽기는 이 트랜잭션에서 합니다.
+     * 되돌려진 것은 만드는 쪽 트랜잭션뿐이고 이쪽은 물들지 않았습니다.
+     *
+     * 다시 읽기로 푸는 것은 기본 키 충돌뿐입니다.
+     * NOT NULL 이나 폭 초과 같은 다른 무결성 오류는 받은 예외를 그대로 다시 던져 500 으로 나갑니다.
+     * 까닭은 isPrimaryKeyConflict 에 적었습니다.
+     *
+     * 만들었다는 로그를 경고로 남깁니다.
+     * 가입 직후의 경합이면 곧 이벤트가 도착해 풀리지만,
+     * 자주 찍히면 account.created 가 유실되고 있다는 신호입니다.
+     */
+    private UserProfile recover(UUID accountId) {
+        try {
+            UserProfile created = userProfileRecoveryService.createEmpty(accountId);
+            log.warn("이벤트 유실 복구 — account.created 를 아직 처리하지 못한 계정이라 닉네임 없이 프로필을 만들었습니다: accountId={}",
+                    accountId);
+            return created;
+        } catch (DataIntegrityViolationException e) {
+            if (!isPrimaryKeyConflict(e)) {
+                throw e;
+            }
+            log.info("프로필을 만드는 사이 먼저 만들어진 행이 있어 다시 읽습니다: accountId={}", accountId);
+            return userProfileRepository.findByIdIncludingDeleted(accountId)
+                    .orElseThrow(() -> new CustomException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        }
+    }
+
+    /**
+     * 만들다 난 무결성 오류가 이 표의 기본 키 충돌인지 봅니다.
+     *
+     * 스프링이 던지는 DataIntegrityViolationException 안에 하이버네이트의 제약 위반 예외가 들어 있고,
+     * 그 예외가 SQLState 와 제약 이름을 담고 있습니다.
+     * 원인 사슬에서 그 예외를 찾아 SQLState 가 23505 이고 이름이 이 표의 기본 키일 때만 참입니다.
+     *
+     * 기본 키 충돌은 다른 요청이 같은 행을 먼저 만든 것이라 다시 읽으면 그 행이 있습니다.
+     * NOT NULL 이나 폭 초과 같은 다른 위반은 행이 생기지 않은 실패라 다시 읽어도 없습니다.
+     * 그것을 404 로 돌려주면 화면이 몇 번 다시 부르다 로그아웃시키고,
+     * 데이터베이스 오류는 원인이 로그에 남지 않습니다.
+     * 그래서 그런 위반은 삼키지 않고 그대로 올려 500 과 오류 로그로 드러냅니다.
+     *
+     * 제약 이름은 대소문자를 가리지 않습니다. 데이터베이스가 이름을 어떻게 돌려주는지에 기대지 않기 위해서입니다.
+     * 이름은 PostgreSQL 이 표 이름 뒤에 _pkey 를 붙여 만든 기본값이라, 표 이름을 바꾸면 함께 바꿔야 합니다.
+     */
+    private static boolean isPrimaryKeyConflict(DataIntegrityViolationException e) {
+        for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException violation) {
+                return UNIQUE_VIOLATION.equals(violation.getSQLState())
+                        && PRIMARY_KEY_CONSTRAINT.equalsIgnoreCase(violation.getConstraintName());
+            }
+        }
+        return false;
     }
 
     /**
@@ -239,10 +348,10 @@ public class UserProfileService {
      * 값을 보내면 지정하고 null 을 보내면 해제합니다.
      *
      * 지정에는 소유권 확인이 반드시 앞섭니다.
-     * 이 컬럼이 소유권 검증을 우회하는 경로이기 때문입니다.
-     * 판정을 부를 때 petIds 를 생략한 요청은 서버가 이 값을 쓰므로,
-     * 남의 식별자가 여기 들어오면 그 반려동물 기준으로 판정을 받아볼 수 있습니다.
-     * 알림도 이 값을 기준으로 삼는데 그때는 브라우저가 없어 파라미터가 올 자리도 없습니다.
+     * 이 값은 요청이 petIds 를 싣지 않는 자리에서 판정 기준이 됩니다.
+     * 즐겨찾기 · 최근 본 장소 목록이 이 값으로 판정 배지를 받아오고, 화면도 처음 고를 반려동물로 씁니다.
+     * 남의 식별자가 여기 들어가면 그 반려동물 기준 판정을 내 목록에서 받아볼 수 있으므로,
+     * 값을 받는 이 자리에서 막습니다.
      *
      * 오래 막아 두었던 자리입니다.
      * 프로필 API 를 만들 때 확인할 수단이 없어 400 으로 닫았고,
