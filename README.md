@@ -68,10 +68,10 @@
 | 받는 이벤트 | 2개 | `account.created` · `account.withdrawn` |
 | 부르는 우리 서비스 | 4개 | place · verdict · review · pet |
 | 부르는 바깥 시스템 | 2개 | AWS S3 · OpenAI |
-| 서비스 클래스 | 7개 | [6-3](#6-3-서비스-클래스-7개--누가-무엇을-하나) |
+| 서비스 클래스 | 8개 | [6-3](#6-3-서비스-클래스-8개--누가-무엇을-하나) |
 | 에러 코드 | 9개 | [4-11](#4-11-에러-코드) |
-| 자바 파일 | 100개 | 테스트 9개 별도 |
-| 테스트 | 104개 | 서비스 6개 + 검증기 1개 + provider 1개 + `contextLoads` |
+| 자바 파일 | 101개 | 테스트 10개 별도 |
+| 테스트 | 114개 | 서비스 7개 + 검증기 1개 + provider 1개 + `contextLoads` |
 
 ---
 
@@ -92,15 +92,16 @@
 
 ---
 
-**프로필은 이 서비스가 만들지 않습니다.**
+**프로필은 가입 이벤트로 생깁니다.**
 
 ```
 가입     사용자 ──▶ auth ──▶ account.created ──▶ user 가 프로필을 만듦
 탈퇴     사용자 ──▶ auth ──▶ account.withdrawn ──▶ user 가 자기 것을 지움
 ```
 
-> `POST /users` 같은 API 가 없습니다. 프로필의 시작과 끝이 전부 이벤트입니다.
-> 그 이야기가 [2장](#2-프로필의-생애) 입니다.
+> `POST /users` 같은 API 가 없습니다. 프로필의 시작과 끝은 이벤트입니다.
+> 가입 이벤트가 늦거나 유실되면 `GET /users/me` 가 닉네임 없이 프로필을 만들어 두고,
+> 이벤트가 나중에 도착하면 그 닉네임을 채웁니다. 그 이야기가 [2장](#2-프로필의-생애) 입니다.
 
 <br><br>
 
@@ -191,7 +192,7 @@ user 에는 로그인 코드가 없습니다. `@CurrentUser` 로 계정 식별�
 반드시                     없으면 어떻게 되나
   postgres                기동 실패.  Flyway 가 붙을 곳이 없음
   redis                   기동은 되고 최근 장소·요약에서 실패
-  kafka                   기동은 되고 이벤트를 못 받음 (프로필이 안 생김)
+  kafka                   기동은 되고 이벤트를 못 받음 (가입 닉네임 · 탈퇴 정리가 빠짐)
   config-server           optional: 이라 기동은 되나 포트·DB 설정이 안 내려와 사실상 못 씀
   eureka-server           lb:// 를 못 풀어 place·verdict·review 호출이 전부 실패
   gateway-server          8080 으로 못 부름.  8082 직결은 됨
@@ -328,9 +329,9 @@ place 와 pet 은 실물이 떠 있어 스텁이 없어도 됩니다.
 | 계정 | 무엇 |
 |---|---|
 | `pawtrail.noreply+u1@gmail.com` / `test1234` | 닉네임 `다정이네`. **user API 검증은 이 계정으로** |
-| 그 밖의 auth 계정들 | `#3` 이전에 가입해 **프로필 행이 아예 없습니다.** `GET /users/me` 가 404 |
+| 가입 이벤트를 못 받은 계정 | 처음 `GET /users/me` 를 부를 때 **닉네임 없는 프로필이 생깁니다** ([2-2](#2-2-가입-이벤트가-늦으면-조회가-프로필을-만듭니다)) |
 
-> ⚠ **404 를 인증 문제로 오해하기 쉽습니다.** 프로필이 없는 것뿐입니다.
+> ⚠ **`GET /users/me` 가 404 면 탈퇴한 계정입니다.** 인증 문제가 아니라 프로필에 탈퇴 표시가 있는 것입니다.
 
 ---
 
@@ -375,6 +376,7 @@ curl.exe -s "http://localhost:8082/api/v1/users/me" `
 
 **이 장을 먼저 읽으면 3장과 4장이 훨씬 쉽습니다.**
 이 서비스에는 프로필을 만드는 API 도 지우는 API 도 없습니다.
+가입 이벤트를 받지 못한 계정만 `GET /users/me` 가 한 번 만들어 둡니다.
 
 <br><br>
 
@@ -395,7 +397,7 @@ curl.exe -s "http://localhost:8082/api/v1/users/me" `
 | | `account.created` | `account.withdrawn` |
 |---|---|---|
 | payload | `accountId` · `email` · `nickname` | `accountId` **하나뿐** |
-| 하는 일 | 행을 만듦 | 프로필을 익명화하고 나머지를 지움 |
+| 하는 일 | 행을 만듦. 조회가 먼저 만들어 둔 행이면 빈 닉네임만 채움 | 프로필을 익명화하고 나머지를 지움 |
 | 값을 나르나 | **예.** 유일하게 값을 나르는 이벤트 | 아니오. 열쇠로만 씀 |
 
 > **`account.created` 만 값을 나릅니다.** `nickname` 의 소유자가 `user_profile` 인데
@@ -421,23 +423,57 @@ user_profile 에 email 컬럼이 없음
 
 ---
 
-### 2-2. 가입 직후에 404 가 날 수 있습니다
+### 2-2. 가입 이벤트가 늦으면 조회가 프로필을 만듭니다
+
+**회원가입은 자동 로그인이라, 화면이 가입 이벤트보다 먼저 `GET /users/me` 를 부를 수 있습니다.**
 
 ```
 회원가입 성공 (쿠키 2개를 심어 자동 로그인)
    │
    ├──▶ auth 가 outbox 에 account.created 를 적음
    │        │
-   │        └──▶ 커밋 후 발행 ──▶ Kafka ──▶ user 가 프로필을 만듦
+   │        └──▶ 커밋 후 발행 ──▶ Kafka ──▶ user
+   │                                        ├── 행이 없음    프로필을 만듦 (닉네임 포함)
+   │                                        └── 행이 있음    비어 있는 닉네임만 채움
    │
    └──▶ 프론트가 바로 GET /users/me 를 부름
-            │
-            └──▶ ⛔아직 프로필이 없으면 404
+            ├── 행이 있음    그대로 돌려줌
+            ├── 행이 없음    닉네임 없이 만들어 돌려줌 (자가 복구)
+            └── 탈퇴 표시    404
 ```
 
-> **실제 창은 밀리초 단위입니다.** 프론트가 짧게 재시도하면 지나갑니다.
+| 먼저 닿은 것 | 결과 |
+|---|---|
+| 가입 이벤트 | 닉네임이 든 프로필이 생기고, 조회는 그것을 돌려줌 |
+| `GET /users/me` | 닉네임 없는 프로필이 생기고, 뒤에 온 이벤트가 닉네임을 채움 |
+| 거의 동시에 | 늦은 쪽이 기본 키 충돌로 실패하고 먼저 생긴 행을 다시 읽음. 결과는 먼저 만든 쪽의 줄과 같음 |
+
+> **첫 응답만 닉네임이 비어 있을 수 있습니다.** 화면이 프로필을 다시 부르면 채워진 값이 나옵니다.
+
+---
+
+**이벤트가 아예 유실돼도 같은 길로 풀립니다.**
+
+```
+account.created 가 outbox 에 멈춤 (카프카 장애 등)
+   │
+   ├──▶ 사용자가 로그인해 GET /users/me ──▶ 닉네임 없는 프로필이 생김
+   │                                        로그에 WARN 「이벤트 유실 복구」 로 시작하는 1줄
+   │
+   └──▶ 관리자가 그 이벤트를 다시 보냄 ──▶ 비어 있는 닉네임이 채워짐
+```
+
+> 이 자가 복구가 없으면 **계정은 있는데 프로필이 영영 없는** 상태가 남습니다.
+> 프로필을 만드는 길이 가입 이벤트뿐이기 때문입니다.
+
+---
+
+**채울 때는 비어 있을 때만 채웁니다.** `nickname` 의 `null` 은 *"아직 설정 안 함"* 이라는
+뜻이라, 비어 있으면 가입 때 적은 이름을 넣고 이미 값이 있으면 사용자가 정한 것이라 덮지 않습니다.
+
 > 동기 호출(`POST /internal/users`)을 쓰지 않은 것은 **트랜잭션이 갈리기 때문**입니다 —
 > auth 는 성공했는데 user 가 실패하면 프로필 없는 계정이 남고 보상을 따로 짜야 합니다.
+> 조회 자리에서 만드는 방법과 동시에 만들 때의 처리는 [9-13](#9-13-없는-프로필을-조회-자리에서-만드는-이유) 에 있습니다.
 
 <br><br>
 
@@ -513,6 +549,16 @@ findByIdIncludingDeleted(accountId)
 > `@SQLRestriction("deleted_at IS NULL")` 이 삭제 표시 행을 가려 **둘 다 비어 있는
 > `Optional`** 로 보이기 때문입니다. 그래서 그 제한을 우회하는 네이티브 조회를 씁니다.
 
+---
+
+**같은 3갈래를 가입 이벤트와 `GET /users/me` 도 씁니다.** 갈래마다 하는 일만 다릅니다.
+
+| 행의 상태 | 탈퇴 이벤트 | 가입 이벤트 | `GET /users/me` |
+|---|---|---|---|
+| 아예 없음 | 탈퇴 표시 행을 만듦 | 프로필을 만듦 | 닉네임 없이 만듦 |
+| 탈퇴 표시 | 건드리지 않음 | 건너뜀 | 404 |
+| 살아 있음 | 익명화 · 삭제 시각 | 비어 있는 닉네임만 채움 | 그대로 돌려줌 |
+
 <br><br>
 
 ---
@@ -549,17 +595,23 @@ auth 가 계정을 만듦
   deleted_by          SYSTEM
 ```
 
-`account.created` 를 처리할 때 **`existsIncludingDeleted` 가 이 행을 보고 멈춥니다.**
+`account.created` 를 처리할 때 **삭제 표시까지 보는 조회가 이 행을 보고 멈춥니다.**
+`GET /users/me` 도 이 행을 보면 프로필을 만들지 않고 404 로 끝냅니다.
 
 ```java
-if (userProfileRepository.existsIncludingDeleted(accountId)) {
-    log.info("이미 처리된 계정입니다. 프로필을 만들지 않습니다: accountId={}", accountId);
+Optional<UserProfile> found = userProfileRepository.findByIdIncludingDeleted(accountId);
+// 행이 없으면 만들고 끝냄
+
+UserProfile profile = found.get();
+
+if (profile.isDeleted()) {
+    log.info("이미 탈퇴 처리된 계정입니다. 프로필을 만들지 않습니다: accountId={}", accountId);
     return;
 }
 ```
 
 > **이 조회도 네이티브 쿼리입니다.** 같은 이유로 `@SQLRestriction` 을 우회해야 합니다.
-> `existsById` 로는 표시 행이 보이지 않아 방어가 통째로 무력해집니다.
+> `findById` 로는 표시 행이 보이지 않아 방어가 통째로 무력해집니다.
 
 <br><br>
 
@@ -570,7 +622,8 @@ if (userProfileRepository.existsIncludingDeleted(accountId)) {
 **프로필이 없는데 다른 표에는 행이 있는 상태**가 실제로 만들어질 수 있습니다.
 
 ```
-읽기   GET /users/me · GET /favorites …        프로필을 먼저 찾고 없으면 404
+읽기   GET /users/me                           프로필이 없으면 닉네임 없이 만들어 돌려줌 (2-2)
+      GET /favorites · 최근 본 장소            프로필이 없으면 대표 반려동물이 없는 것으로 봄
 쓰기   POST /favorites · POST /recent-places   ⛔프로필을 보지 않음.  그냥 저장함
 ```
 
@@ -580,7 +633,7 @@ if (userProfileRepository.existsIncludingDeleted(accountId)) {
    ├──▶ account.created 가 발행에 실패해 멈춤
    │
    └──▶ 사용자는 로그인 상태
-            GET /users/me      404
+            GET /users/me      ✅닉네임 없는 프로필이 생김 (자가 복구)
             POST /favorites    ✅성공.  행이 생김
 ```
 
@@ -935,7 +988,9 @@ OpenAI   defaultRestClientBuilder + 전용 타임아웃 20초
 ```
 GET /api/v1/users/me
      │
-     ├──▶ user_profile 조회        없으면 404
+     ├──▶ user_profile 조회        탈퇴 표시까지 보는 조회
+     │    ├── 없음                 닉네임 없이 만들어 돌려줌 (자가 복구)
+     │    └── 탈퇴 표시            404
      ├──▶ visit_log COUNT          visitCount
      ├──▶ favorite  COUNT          favoriteCount
      ├──▶ review 호출              reviewCount   ⛔실패하면 null
@@ -947,7 +1002,7 @@ GET /api/v1/users/me
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `accountId` | uuid | |
-| `nickname` | string · **null 가능** | 소셜 가입은 아직 없음 |
+| `nickname` | string · **null 가능** | 소셜 가입 직후 · 자가 복구 직후는 아직 없음 |
 | `profileImageUrl` | string · null 가능 | **서명이 붙은 주소.** 1시간 뒤 만료 |
 | `defaultPetId` | uuid · null 가능 | |
 | `stats.visitCount` | number | 우리 표를 셈 |
@@ -959,7 +1014,11 @@ GET /api/v1/users/me
 
 | 실패 | 코드 |
 |---|---|
-| 프로필 없음 | `404 RESOURCE_NOT_FOUND` |
+| 프로필에 탈퇴 표시가 있음 | `404 RESOURCE_NOT_FOUND` |
+
+> **프로필 행이 아예 없으면 404 가 아닙니다.** 그 자리에서 닉네임 없이 만들어 `200` 으로 돌려줍니다
+> ([2-2](#2-2-가입-이벤트가-늦으면-조회가-프로필을-만듭니다)).
+> 만들 때 다른 요청이 먼저 만들었으면 기본 키 충돌을 잡아 먼저 생긴 행을 돌려주므로, 동시에 여러 번 불러도 행은 1개입니다.
 
 <br><br>
 
@@ -1089,9 +1148,9 @@ users/{accountId}/profile        확장자 없음
 ```
 default_pet_id 는 소유권 검증을 우회하는 경로임
    │
-   └──▶ verdict 를 부를 때 petIds 를 생략하면 서버가 이 값을 씀
-        남의 petId 를 저장해 두면 그 반려동물 기준으로 판정을 받아볼 수 있음
-        알림도 이 값을 기준으로 삼는데 그때는 브라우저가 없어 파라미터가 올 자리도 없음
+   └──▶ 즐겨찾기 · 최근 본 장소 목록은 요청에 petIds 가 없어 이 값으로 판정을 받아옴
+        남의 petId 를 저장해 두면 그 반려동물 기준 판정을 내 목록에서 받아볼 수 있음
+        화면도 이 값을 처음 고를 반려동물로 씀
 ```
 
 > **오래 막아 두었던 자리입니다.** 프로필 API 를 만들 때 확인할 수단이 없어 `400` 으로 닫았고,
@@ -1447,7 +1506,7 @@ ORDER BY visit_at,  visit_order
 |---|---|---|
 | `VALIDATION_FAILED` | 400 | 요청 검증 실패. `data` 에 필드별 메시지 배열 |
 | `AUTHENTICATION_FAILED` | 401 | 헤더가 없음 |
-| `RESOURCE_NOT_FOUND` | 404 | 프로필 없음 · 남의 일정 |
+| `RESOURCE_NOT_FOUND` | 404 | 탈퇴 표시 프로필 · 프로필 행이 없는데 수정·사진·대표 지정 · 남의 일정 |
 | `INTERNAL_ERROR` | 500 | 그 밖 |
 
 ---
@@ -1560,8 +1619,8 @@ S3
 
 | 컬럼 | 타입 | NULL | 설명 |
 |---|---|---|---|
-| `account_id` | uuid | ✕ | **PK.** auth 가 만든 값을 이벤트로 받아 그대로 씀 |
-| `nickname` | varchar(20) | ○ | 소셜 가입은 없이 옴. 탈퇴 시 `탈퇴한 사용자` 로 치환 |
+| `account_id` | uuid | ✕ | **PK.** auth 가 만든 계정 식별자를 그대로 씀. 이벤트의 `accountId`, 자가 복구 때는 `X-User-Id` |
+| `nickname` | varchar(20) | ○ | 소셜 가입은 없이 옴. 자가 복구로 생긴 행도 비어 있다가 가입 이벤트가 채움. 탈퇴 시 `탈퇴한 사용자` 로 치환 |
 | `profile_image_url` | text | ○ | **주소가 아니라 키.** 탈퇴 시 비우고 S3 객체도 지움 |
 | `default_pet_id` | uuid | ○ | 판정 기준. 펫이 0마리면 `null` |
 
@@ -1585,6 +1644,23 @@ PRIMARY KEY (account_id)
 > ⛔ **엔티티에 `@UuidGenerator` 를 붙이면 안 됩니다.** 붙이면 payload 의 `accountId` 를
 > 무시하고 새 UUID 를 만들어 **오류 없이 auth 와 연결이 끊깁니다.**
 > `X-User-Id` 로 조회하면 영원히 못 찾습니다.
+
+---
+
+**새 행은 `save` 가 아니라 `create` 로 넣습니다.**
+
+```
+기본 키를 밖에서 받아 채우므로 save() 는 merge 로 돎
+   merge 는 같은 키의 행이 이미 있으면 오류 없이 그 행을 덮어씀
+   자가 복구와 가입 이벤트가 거의 같은 순간에 만들면
+   한쪽이 다른 쪽이 넣은 닉네임을 null 로 지울 수 있음
+
+create() 는 persist 로 INSERT 만 함
+   같은 키의 행이 있으면 기본 키 충돌(23505)로 실패해 부르는 쪽이 알 수 있음
+```
+
+> 충돌을 알면 먼저 생긴 행을 다시 읽거나(자가 복구) 카프카 재시도로 다시 처리(가입 이벤트)할 수 있습니다.
+> 덮어쓰기는 오류가 나지 않아 **값이 사라진 것을 아무도 모릅니다.**
 
 ---
 
@@ -1814,7 +1890,7 @@ DailySummaryId.of(accountId, visitDate)     // 안에서 atStartOfDay()
 | 토픽 | `account.created` | `account.withdrawn` |
 | DLQ | `account.created.dlq` | `account.withdrawn.dlq` |
 | payload | `accountId` · `email` · `nickname` | `accountId` |
-| 하는 일 | 프로필 생성 | 익명화 + 정리 |
+| 하는 일 | 프로필 생성. 이미 있으면 빈 닉네임만 채움 | 익명화 + 정리 |
 | 소비 DTO | `AccountCreatedMessage` | `AccountWithdrawnMessage` |
 
 ```java
@@ -1831,6 +1907,18 @@ public void consume(EventEnvelope<AccountCreatedMessage> envelope) { ... }
 
 > ⛔ **서비스가 자기 `RecordMessageConverter` 를 만들면 안 됩니다.**
 > 빈이 둘이 되어 `@ConditionalOnMissingBean` 이 풀리고 **어느 쪽도 적용되지 않습니다.**
+
+---
+
+**기본 키 충돌도 재시도로 풀립니다.**
+
+```
+가입 이벤트가 프로필을 INSERT 하려는 순간 GET /users/me 가 먼저 만들었음
+   │
+   └──▶ 기본 키 충돌로 실패 ──▶ 트랜잭션 전체가 롤백 (processed_event 포함)
+            │
+            └──▶ 1초 뒤 재시도 ──▶ 이번엔 행이 보임 ──▶ 비어 있는 닉네임만 채움
+```
 
 ---
 
@@ -1898,16 +1986,16 @@ presentation   ──▶   application   ──▶   domain   ◀──   infras
 
 ---
 
-**패키지별 파일 수입니다. 전부 100개.**
+**패키지별 파일 수입니다. 전부 101개.**
 
 | 패키지 | 개수 | 무엇 |
 |---|---|---|
 | `application/dto/output` | 10 | 카드 4 · 프로필 · 요약 · 업로드 · 생성 결과 2 · 요약본 |
 | `presentation/request` | 9 | 요청 DTO |
 | `presentation/controller` | 8 | 공개 6 · internal 2 |
+| `application/service` | 8 | [6-3](#6-3-서비스-클래스-8개--누가-무엇을-하나) |
 | `infrastructure/persistence` | 7 | 리포지터리 구현 5 + Redis 저장소 2 |
 | `domain/repository` | 7 | 약속 5 + `~Store` 2 |
-| `application/service` | 7 | [6-3](#6-3-서비스-클래스-7개--누가-무엇을-하나) |
 | `domain/model` | 6 | 엔티티 5 + 복합 키 1 |
 | `infrastructure/provider/internal/dto` | 5 | 받는 쪽 형태 |
 | `infrastructure/persistence/jpa` | 5 | 스프링 데이터 인터페이스 |
@@ -1943,11 +2031,12 @@ auth 의 여덟 개가 예외 없이 그렇게 갈려 있어 그 규칙을 그�
 
 ---
 
-### 6-3. 서비스 클래스 7개 — 누가 무엇을 하나
+### 6-3. 서비스 클래스 8개 — 누가 무엇을 하나
 
 | 클래스 | 맡는 것 | 주입 |
 |---|---|---|
-| `UserProfileService` | 프로필 생성(이벤트) · 조회 · 수정 · 업로드 주소 · 대표 펫 · 배치 조회 | 7 |
+| `UserProfileService` | 프로필 생성(이벤트) · 조회 · 수정 · 업로드 주소 · 대표 펫 · 배치 조회 | 8 |
+| `UserProfileRecoveryService` | 없는 프로필을 새 트랜잭션에서 만듦 (자가 복구) | 1 |
 | `FavoriteService` | 즐겨찾기 3개 + internal 조회 | 5 |
 | `VisitService` | 방문 기록 3개 | 8 |
 | `ItineraryService` | 일정 5개 | 6 |
@@ -1971,6 +2060,23 @@ UserProfileService 에 얹으면
 > auth 도 같은 이유로 `AccountService` 에서 `WithdrawService` 를 갈랐습니다.
 > 이름을 다르게 둔 것은 **하는 일이 반대이기 때문**입니다 — 그쪽은 *탈퇴시키는* 서비스이고
 > 이쪽은 *탈퇴에 반응해 지우는* 쪽이라 이벤트 이름을 따랐습니다.
+
+---
+
+**없는 프로필 만들기도 따로 둡니다.** 이쪽은 주입 수가 아니라 트랜잭션 경계 때문입니다.
+
+```
+GET /users/me 는 읽기 전용 트랜잭션
+   │
+   └──▶ 그 안에서 만들다 기본 키가 부딪히면 트랜잭션에 rollback-only 표시가 남음
+        예외를 잡아도 표시는 안 지워져 커밋이 거부됨  →  500
+
+UserProfileRecoveryService.createEmpty 는 @Transactional(propagation = Propagation.REQUIRES_NEW)
+   되돌려지는 것은 새 트랜잭션뿐이라 조회 쪽은 예외를 잡고 먼저 생긴 행을 다시 읽을 수 있음
+```
+
+> ⛔ **같은 클래스 안의 메서드로 두면 안 됩니다.** 자기 호출은 스프링 프록시를 타지 않아
+> `@Transactional` 이 무시되고 새 트랜잭션이 열리지 않습니다. 자세한 것은 [9-13](#9-13-없는-프로필을-조회-자리에서-만드는-이유) 에 있습니다.
 
 <br><br>
 
@@ -2032,7 +2138,7 @@ infrastructure/provider/*/dto/       받는 쪽 형태        PlaceResponse · V
 
 ---
 
-### 6-6. 테스트 104개
+### 6-6. 테스트 114개
 
 | 파일 | 개수 | 무엇을 보나 |
 |---|---|---|
@@ -2042,6 +2148,7 @@ infrastructure/provider/*/dto/       받는 쪽 형태        PlaceResponse · V
 | `DailySummaryServiceTest` | 13 | 검사 순서 · 실패 시 되돌리기 · 갱신 |
 | `RecentPlaceServiceTest` | 12 | 카드 조립 · 없는 장소 · 판정 실패와 대표 없음의 구분 |
 | `FavoriteServiceTest` | 11 | 조립 · 실패 처리 · 멱등 |
+| `UserProfileServiceTest` | 10 | 자가 복구 (있음 · 없음 · 탈퇴 표시) · 충돌 뒤 다시 읽기 · 가입 이벤트 3갈래 · 빈 닉네임만 채움 |
 | `PetOwnershipValidatorTest` | 4 | 통과 · 남의 것 · 값이 없으면 안 부름 · 실패는 다른 코드 |
 | `PlaceProviderImplTest` | 7 | 경계 100·101 · 여러 묶음 · 중간 실패 · 일부 누락 · 빈 목록 |
 | `UserApplicationTests` | 1 | `contextLoads` |
@@ -2049,6 +2156,8 @@ infrastructure/provider/*/dto/       받는 쪽 형태        PlaceResponse · V
 ```
 스프링 컨텍스트를 띄우는 것은 contextLoads 하나뿐
 나머지는 Mockito + AssertJ.  DB 도 Redis 도 안 띄움
+⚠자가 복구의 새 트랜잭션이 정말 떨어지는지는 단위 시험으로 안 보임
+  컨테이너에 같은 계정 요청 4개를 한꺼번에 보내 확인함 (충돌 3개가 전부 200)
 ⛔PlaceProviderImplTest 만 다름 — MockRestServiceServer 로 HTTP 를 흉내 냄
   나눠 부르는 일이 provider 안에서 일어나 목으로는 보이지 않기 때문임
   spring-boot-starter-test 에 이미 들어 있어 의존성은 늘지 않음
@@ -2248,11 +2357,16 @@ LlmProperties       켜 주는 데가 없어 NoSuchBeanDefinitionException 으�
 
 ---
 
-### 8-2. 프로필이 안 생겼을 때
+### 8-2. 가입 닉네임이 비어 있을 때
 
 ```
-증상   GET /users/me 가 계속 404
+증상   GET /users/me 는 200 인데 이메일로 가입한 계정의 nickname 이 null
+      user 로그에 WARN "이벤트 유실 복구 — …" 가 있음
 ```
+
+> **가입 이벤트가 끊겨도 404 는 나지 않습니다.** 프로필이 없으면 조회가 닉네임 없이 만들어 돌려주므로
+> ([2-2](#2-2-가입-이벤트가-늦으면-조회가-프로필을-만듭니다)), 끊긴 흔적은 *비어 있는 닉네임* 과 위 WARN 1줄로 남습니다.
+> 소셜 가입은 원래 닉네임 없이 오므로 이메일 가입인데 비어 있을 때 봅니다.
 
 ```
 ① auth 의 outbox 에 남아 있나
@@ -2261,6 +2375,7 @@ LlmProperties       켜 주는 데가 없어 NoSuchBeanDefinitionException 으�
 
 ② Kafka 에 갔나
       Kafka UI :9000  →  account.created 토픽의 메시지
+      ⛔토픽 자체가 없으면 발행이 아예 안 됨.  kafka 컨테이너를 다시 만든 뒤 토픽을 안 만든 것
 
 ③ user 가 받았나
       로그에 "account.created 수신" 이 있나
@@ -2273,11 +2388,26 @@ LlmProperties       켜 주는 데가 없어 NoSuchBeanDefinitionException 으�
 | 어디서 멈췄나 | 무엇을 하나 |
 |---|---|
 | auth outbox | `POST /api/v1/admin/accounts/outbox/{id}/retry` |
+| 토픽이 없음 | infra 에서 `docker compose exec kafka bash /opt/scripts/create-topics.sh` 로 토픽을 만든 뒤 위 재발행 |
 | user 가 못 받음 | 컨슈머 그룹이 붙어 있는지. 리스너 컨테이너가 떴는지 |
 | DLQ | 원문을 보고 원인을 고친 뒤 다시 발행 |
 
-> ⚠ **이미 탈퇴한 계정이면 재발행해도 프로필이 안 생기는 것이 정상입니다.**
-> 탈퇴 표시 행이 막습니다. 로그에 *"이미 처리된 계정입니다"* 가 남습니다.
+> ⚠ **토픽이 없을 때 재발행하면 60초 동안 붙잡혔다가 `500 OUTBOX_REPUBLISH_FAILED` 가 납니다.**
+> auth 로그에 `Topic account.created not present in metadata after 60000 ms` 가 남습니다.
+
+---
+
+**받은 뒤에는 로그 1줄로 어느 갈래로 갔는지 보입니다.**
+
+| 로그 | 뜻 |
+|---|---|
+| `프로필을 만들었습니다` | 조회보다 먼저 왔음. 보통의 가입 경로 |
+| `먼저 만들어진 프로필에 가입 닉네임을 채웠습니다` | 조회가 먼저 만들어 둔 행의 빈 닉네임을 채움 |
+| `이미 프로필이 있습니다. 그대로 둡니다` | 채울 것이 없음. 닉네임이 이미 있거나 가입 이벤트에도 닉네임이 없음(소셜) |
+| `이미 탈퇴 처리된 계정입니다. 프로필을 만들지 않습니다` | 탈퇴 표시 행이 막음. 재발행해도 프로필이 안 생기는 것이 정상 |
+
+> 그 사이 사용자가 닉네임을 정했으면 늦게 온 가입 닉네임은 버려집니다.
+> *"아직 설정 안 함"* 일 때만 채우기 때문입니다.
 
 <br><br>
 
@@ -2421,7 +2551,8 @@ echo "$msg" | docker compose exec -T kafka /opt/kafka/bin/kafka-console-producer
 | 보상 | 필요 없음. 재시도가 이어서 함 | 보상과 재시도를 따로 짜야 함 |
 | 대칭 | 탈퇴가 이미 이벤트라 짝이 맞음 | 가입만 동기가 되어 갈림 |
 
-> **대가는 가입 직후 404 창입니다.** 실제로는 밀리초 단위이고 프론트가 짧게 재시도하면 됩니다.
+> **대가는 가입 직후 프로필이 아직 없는 짧은 틈입니다.** 그 틈에 닿은 조회는 닉네임 없이 프로필을 만들고,
+> 늦게 온 가입 이벤트가 닉네임을 채웁니다. 이벤트가 유실돼도 프로필은 생깁니다 ([9-13](#9-13-없는-프로필을-조회-자리에서-만드는-이유)).
 
 <br><br>
 
@@ -2732,6 +2863,73 @@ AfterCommitExecutor 가 실패를 잡아 삼키는 단위는 "넘겨받은 일 �
 
 ---
 
+### 9-13. 없는 프로필을 조회 자리에서 만드는 이유
+
+```
+문제   가입 이벤트가 늦거나 유실되면 계정은 있는데 프로필이 없음
+      프로필을 만드는 공개 API 가 없어 사용자가 스스로 풀 길이 없음
+      화면은 GET /users/me 가 404 면 짧게 몇 번 다시 부르다가 프로필 자리를 비움
+```
+
+**언제 만드나 — 바로 만들고, 늦게 온 가입 이벤트가 닉네임을 채웁니다.**
+
+| | 바로 만들고 이벤트가 채움 (고름) | 몇 초 기다린 뒤 만듦 (버림) | 바로 만들고 닉네임은 포기 (버림) |
+|---|---|---|---|
+| 가입 직후 조회가 먼저 닿으면 | 첫 응답만 닉네임이 비고 곧 채워짐 | 기다리는 동안 404 | **가입 때 적은 닉네임이 사라짐** |
+| 서버가 기억할 것 | 없음 | 첫 404 시각을 Redis 에 적어 둠 | 없음 |
+| 화면과의 약속 | 없음 | 서버 대기 시간이 화면의 재시도 창(약 5초) 안이어야 함 | 없음 |
+
+> **채워도 사용자 값을 덮지 않습니다.** `nickname` 의 `null` 은 *"아직 설정 안 함"* 이라
+> 비어 있을 때만 채우고, 값이 있으면 사용자가 정한 것으로 보고 그대로 둡니다.
+
+---
+
+**동시에 만들 때 — 새 트랜잭션에서 만들고, 부딪히면 먼저 생긴 행을 다시 읽습니다.**
+
+```
+같은 계정의 GET 이 한꺼번에 여럿 오거나, GET 과 가입 이벤트가 같은 순간 만들면
+   │
+   └──▶ 늦은 쪽은 기본 키 충돌 (23505)
+```
+
+| | 새 트랜잭션 + 다시 읽기 (고름) | 조회로 거르고 틈은 받아들임 (버림) | 네이티브 `ON CONFLICT DO NOTHING` (버림) |
+|---|---|---|---|
+| 부딪힌 요청 | **200.** 먼저 생긴 행을 돌려줌 | **500.** 예외를 잡아도 트랜잭션이 커밋을 거부함 | 200 |
+| 대가 | 빈 1개 · 그 요청이 잠깐 커넥션 2개 | 없음 | 감사 컬럼 4개를 손으로 채우는 예외가 생김 |
+
+> **즐겨찾기 담기와 방문 기록은 틈을 받아들였습니다.** 거기서 겹치는 것은 같은 사람이 2번 누른 것이라
+> 한쪽이 실패해도 결과가 같습니다. 여기서 겹치는 상대는 가입 이벤트라는 다른 경로이고,
+> 지는 쪽이 가입 직후의 첫 화면이라 실패를 받아들일 수 없었습니다.
+
+> 새 트랜잭션을 왜 별도 빈에서 여는지는 [6-3](#6-3-서비스-클래스-8개--누가-무엇을-하나),
+> 새 행을 `save` 가 아니라 `create` 로 넣는 까닭은 [5-2](#5-2-user_profile) 에 있습니다.
+
+---
+
+**만드는 자리는 `GET /users/me` 뿐입니다.**
+
+| API | 프로필 행이 없을 때 |
+|---|---|
+| `GET /users/me` | 닉네임 없이 만들어 돌려줌 |
+| `PATCH /users/me` · `POST /users/me/upload-url` · `PATCH /users/me/default-pet` | `404 RESOURCE_NOT_FOUND` 그대로 |
+
+> 화면은 로그인 뒤 다른 프로필 API 보다 먼저 `GET /users/me` 를 부르므로 나머지 3개에 닿을 때는 이미 행이 있습니다.
+> 쓰기 API 까지 행을 만들면 무엇이 프로필을 만드는지 찾기 어려워집니다.
+
+---
+
+**컨테이너에서 이렇게 확인했습니다.**
+
+| 확인 | 결과 |
+|---|---|
+| 프로필이 없는 계정에 같은 요청 4개를 한꺼번에 | 4개 다 `200` · 행 1개 · WARN 1줄 + 「다시 읽습니다」 3줄 |
+| 그 계정의 멈춘 가입 이벤트를 다시 보냄 | 「먼저 만들어진 프로필에 가입 닉네임을 채웠습니다」 · `updated_by` 는 `SYSTEM` |
+| 탈퇴 표시가 있는 계정 | `404` · 행이 되살아나지 않음 |
+
+<br><br>
+
+---
+
 ## 10. 막히기 쉬운 자리
 
 <br><br>
@@ -2828,6 +3026,7 @@ rm -f cookies.txt
 | Spring Data Redis 경고 5줄 | JPA·Redis 리포지터리가 한 프로젝트에 있어 스캐너가 물어본 것. 마지막 줄이 `Found 0 Redis repository interfaces` 면 정상 |
 | Apache http client 경고 | AWS SDK 의 첫 S3 API 호출에 딸려 나옴 |
 | `S3Config uses a deprecated API` | 컴파일 경고. 동작에 지장 없음 |
+| `org.hibernate.orm.jdbc.error` 의 `SQLState: 23505` · `user_profile_pkey` | 같은 계정의 `GET /users/me` 가 겹쳐 자가 복구가 부딪힌 것. 같은 스레드에 「다시 읽습니다」 줄이 이어지면 정상 |
 
 <br><br>
 
@@ -2851,7 +3050,8 @@ rm -f cookies.txt
 
 | | |
 |---|---|
-| `+u1` 이 아닌 계정으로 `GET /users/me` | **404.** 프로필 행이 아예 없는 계정들임 |
+| 프로필 행이 없는 계정으로 `GET /users/me` | **404 가 아니라 200** 이고 닉네임 없는 행이 생김. 같은 확인을 되풀이하려면 그 행을 지우고 다시 |
+| 컨테이너가 떠 있는데 IntelliJ 로 1개 더 띄움 | 2개가 같은 컨슈머 그룹이라 파티션을 나눠 받음. 이벤트를 옛 코드가 받을 수 있어 **소비 쪽을 확인할 때는 컨테이너를 갈아 끼움** |
 | IntelliJ 로 띄운 직후 게이트웨이 503 | 레지스트리 갱신까지 30초쯤 |
 | 같은 `eventId` 로 재주입 | 아무 일도 안 일어남. **매번 새 값으로** |
 | Redis `WRONGTYPE` | 옛 키가 List 로 남아 있음. `DEL` 후 다시 |
@@ -2908,6 +3108,19 @@ auth 가 tokens_valid_from 을 올려도 게이트웨이는 서명만 보고 통
 
 > **auth 가 이미 감수한 것의 파급이고 user 에서 막을 수단이 없습니다.**
 > 게이트웨이가 `tokens_valid_from` 을 보게 하면 닫히지만 그것은 게이트웨이·auth 의 결정입니다.
+
+---
+
+**⚠가입 이벤트가 끝내 안 오면 닉네임은 빈 채로 남습니다.**
+
+```
+자가 복구는 프로필 행만 만듦.  가입 때 적은 닉네임은 account.created 에만 있음
+   │
+   └──▶ auth outbox 가 재시도를 포기했으면 누군가 다시 보내야 채워짐 (8-2)
+```
+
+> 유실을 알리는 장치는 WARN 로그 1줄뿐입니다.
+> 그 사이 사용자가 닉네임을 정하면 그 값이 남고 가입 닉네임은 버려집니다.
 
 ---
 
@@ -2984,12 +3197,15 @@ auth 가 tokens_valid_from 을 올려도 게이트웨이는 서명만 보고 통
 | **최근 본 장소** | 장소 상세를 열 때 자동으로 쌓이는 20곳. Redis Sorted Set |
 | **소프트 딜리트** | 행을 남기고 `deleted_at` 만 찍는 것. **이 서비스는 `user_profile` 에만** |
 | **탈퇴 표시 행** | 프로필이 없는데 탈퇴가 먼저 왔을 때 만드는 껍데기 행 |
+| **자가 복구** | 프로필이 없는 계정이 `GET /users/me` 를 부르면 그 자리에서 닉네임 없이 만드는 것. 늦게 온 가입 이벤트가 닉네임을 채움 |
 | **익명화** | 닉네임을 치환하고 사진을 비우고 삭제 시각을 찍는 것 |
 | **presigned URL** | 서명이 붙어 한동안만 유효한 S3 주소. 서버를 거치지 않고 올리고 내려받음 |
 | **provider** | 남의 시스템을 부르는 약속. 도메인이 보는 인터페이스 |
 | **`lb://`** | 유레카에서 그 이름의 서비스를 찾아 부르라는 표시 |
 | **Inbox** | 받은 이벤트를 `processed_event` 에 적어 두 번 처리하지 않는 방식 |
 | **멱등** | 여러 번 해도 결과가 같은 것 |
+| **rollback-only** | 트랜잭션이 되돌려져야 한다는 표시. 쓰기가 실패하면 붙고, 예외를 잡아도 안 지워져 커밋이 거부됨 |
+| **REQUIRES_NEW** | 부르는 쪽 트랜잭션을 잠시 세워 두고 새 트랜잭션을 여는 방식. 여기서 되돌려도 부르는 쪽은 안 물듦 |
 | **반열림 구간** | 시작은 포함하고 끝은 포함하지 않는 범위. `>= dayStart AND < dayEnd` |
 
 <br><br>
