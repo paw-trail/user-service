@@ -38,27 +38,33 @@ public interface UserProfileRepository {
     // 탈퇴한 사람도 빠지는데, 그 경우 부르는 쪽이 "탈퇴한 사용자" 로 그림
     List<UserProfile> findAllById(Collection<UUID> accountIds);
 
-    // 탈퇴한 것까지 포함해 그 계정의 행이 있는지 봄
+    // 새 프로필을 INSERT 로만 넣고 그 자리에서 데이터베이스로 내보냄
     //
-    // 위 findById 로는 삭제 표시 행이 보이지 않으므로 따로 둠
-    // account.created 를 소비할 때 "이미 탈퇴한 계정인가" 를 판단하는 데 씀
+    // save 와 따로 둔 이유
+    // 기본 키를 이벤트나 요청이 주는 값으로 채우므로 save 는 merge 로 돎
+    // merge 는 같은 기본 키의 살아 있는 행이 그 사이 생겼으면 오류 없이 그 행을 덮어씀
+    // 자가 복구와 가입 이벤트가 거의 같은 순간에 만들면 한쪽이 다른 쪽 닉네임을 null 로 지울 수 있음
+    // INSERT 로만 넣으면 그때 기본 키 충돌로 실패해 부르는 쪽이 알 수 있음
     //
-    // 반환이 Optional 이 아니라 boolean 인 이유
-    // 부르는 쪽이 알아야 하는 것은 있는지 없는지뿐이고,
-    // 삭제 표시 행은 account_id 말고 담긴 값이 없어 꺼내 봐야 쓸 것이 없음
-    boolean existsIncludingDeleted(UUID accountId);
+    // 그 자리에서 내보내는 이유
+    // 커밋 시점까지 미루면 충돌 예외가 트랜잭션을 되돌리는 과정에서 나 부르는 쪽이 가리기 어려움
+    //
+    // 충돌하면 DataIntegrityViolationException 이 남
+    UserProfile create(UserProfile userProfile);
 
     // 탈퇴한 것까지 포함해 그 계정의 프로필을 찾음
     //
-    // 탈퇴 처리가 씀
+    // 탈퇴 처리 · 가입 이벤트 소비 · GET /users/me 가 씀
     // 프로필이 놓일 수 있는 상태가 셋인데 조회 한 번으로 갈리게 하려고 둠
-    //   비어 있음             행이 아예 없음, 순서 역전이라 삭제 표시 행을 만들어야 함
-    //   isDeleted 가 true    이미 탈퇴 표시가 있음
-    //   그 밖                 정상, 익명화하고 삭제 표시를 남기면 됨
+    //   비어 있음             행이 아예 없음
+    //   isDeleted 가 true    탈퇴 표시가 있음
+    //   그 밖                 살아 있는 프로필
+    // 셋을 받아 무엇을 할지는 부르는 쪽마다 다름
+    //   탈퇴 처리         삭제 표시 행을 만듦 · 그대로 둠 · 익명화
+    //   가입 이벤트 소비   만듦 · 건너뜀 · 비어 있는 닉네임을 채움
+    //   GET /users/me    자가 복구 · 404 · 그대로 돌려줌
     //
-    // 위 findById 로는 뒤의 둘이 똑같이 비어 있는 Optional 로 보임
-    // existsIncludingDeleted 와 조합해도 갈리기는 하나 조회가 두 번이 되고,
-    // 정상 경로에서만 엔티티가 나와 갈래마다 다루는 모양이 달라짐
+    // 위 findById 로는 앞의 둘이 똑같이 비어 있는 Optional 로 보임
     //
     // 돌려받은 엔티티는 영속 상태라 값을 고치면 커밋 시점에 반영됨
     Optional<UserProfile> findByIdIncludingDeleted(UUID accountId);
