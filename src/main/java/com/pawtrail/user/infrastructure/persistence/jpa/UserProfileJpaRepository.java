@@ -22,29 +22,16 @@ import org.springframework.data.repository.query.Param;
 public interface UserProfileJpaRepository extends JpaRepository<UserProfile, UUID> {
 
     /**
-     * 탈퇴한 것까지 포함해 행의 존재만 확인합니다.
+     * 탈퇴한 것까지 포함해 프로필을 찾아옵니다.
      *
      * 네이티브 쿼리인 이유는 @SQLRestriction 을 우회해야 하기 때문입니다.
      * 그 애노테이션은 하이버네이트가 만드는 모든 조회에 deleted_at IS NULL 을 덧붙이므로
-     * existsById 로는 삭제 표시 행이 보이지 않습니다.
+     * findById 로는 삭제 표시 행이 보이지 않습니다.
      * 네이티브 쿼리는 하이버네이트가 문장을 만들지 않아 그 제한을 받지 않습니다.
      *
-     * SELECT EXISTS 를 쓰면 PostgreSQL 이 첫 행을 찾는 즉시 멈춥니다.
-     * COUNT 는 조건에 맞는 행을 끝까지 세는데 여기서는 그럴 이유가 없습니다.
-     */
-    @Query(value = "SELECT EXISTS(SELECT 1 FROM user_profile WHERE account_id = :accountId)",
-            nativeQuery = true)
-    boolean existsIncludingDeleted(@Param("accountId") UUID accountId);
-
-    /**
-     * 탈퇴한 것까지 포함해 프로필을 찾아옵니다.
-     *
-     * 네이티브 쿼리인 이유는 위 existsIncludingDeleted 와 같습니다.
-     * @SQLRestriction 이 하이버네이트가 만드는 조회에 deleted_at IS NULL 을 덧붙이므로
-     * findById 로는 삭제 표시 행이 보이지 않습니다.
-     *
-     * 존재만 보는 쪽과 달리 엔티티를 그대로 돌려받습니다.
-     * 탈퇴 처리가 이 엔티티에 익명화를 걸고 그 변경이 커밋 시점에 반영되어야 하기 때문입니다.
+     * 엔티티를 그대로 돌려받습니다.
+     * 탈퇴 처리가 익명화를 걸고, 가입 이벤트 소비가 비어 있는 닉네임을 채우며,
+     * 그 변경이 커밋 시점에 반영되어야 하기 때문입니다.
      * 네이티브 쿼리로 읽어도 영속성 컨텍스트에 올라가므로 변경 감지가 그대로 걸립니다.
      */
     @Query(value = "SELECT * FROM user_profile WHERE account_id = :accountId",
