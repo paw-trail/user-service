@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +43,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class UserProfileService {
+
+    // 이 표의 기본 키 제약 이름 — PostgreSQL 이 표 이름 뒤에 _pkey 를 붙여 만든 기본값
+    private static final String PRIMARY_KEY_CONSTRAINT = "user_profile_pkey";
+
+    // 유일 · 기본 키 위반의 SQLState
+    private static final String UNIQUE_VIOLATION = "23505";
 
     private final UserProfileRepository userProfileRepository;
     private final UserProfileRecoveryService userProfileRecoveryService;
@@ -150,6 +157,10 @@ public class UserProfileService {
      * 다시 읽기는 이 트랜잭션에서 합니다.
      * 되돌려진 것은 만드는 쪽 트랜잭션뿐이고 이쪽은 물들지 않았습니다.
      *
+     * 다시 읽기로 푸는 것은 기본 키 충돌뿐입니다.
+     * NOT NULL 이나 폭 초과 같은 다른 무결성 오류는 받은 예외를 그대로 다시 던져 500 으로 나갑니다.
+     * 까닭은 isPrimaryKeyConflict 에 적었습니다.
+     *
      * 만들었다는 로그를 경고로 남깁니다.
      * 가입 직후의 경합이면 곧 이벤트가 도착해 풀리지만,
      * 자주 찍히면 account.created 가 유실되고 있다는 신호입니다.
@@ -161,10 +172,39 @@ public class UserProfileService {
                     accountId);
             return created;
         } catch (DataIntegrityViolationException e) {
+            if (!isPrimaryKeyConflict(e)) {
+                throw e;
+            }
             log.info("프로필을 만드는 사이 먼저 만들어진 행이 있어 다시 읽습니다: accountId={}", accountId);
             return userProfileRepository.findByIdIncludingDeleted(accountId)
                     .orElseThrow(() -> new CustomException(CommonErrorCode.RESOURCE_NOT_FOUND));
         }
+    }
+
+    /**
+     * 만들다 난 무결성 오류가 이 표의 기본 키 충돌인지 봅니다.
+     *
+     * 스프링이 던지는 DataIntegrityViolationException 안에 하이버네이트의 제약 위반 예외가 들어 있고,
+     * 그 예외가 SQLState 와 제약 이름을 담고 있습니다.
+     * 원인 사슬에서 그 예외를 찾아 SQLState 가 23505 이고 이름이 이 표의 기본 키일 때만 참입니다.
+     *
+     * 기본 키 충돌은 다른 요청이 같은 행을 먼저 만든 것이라 다시 읽으면 그 행이 있습니다.
+     * NOT NULL 이나 폭 초과 같은 다른 위반은 행이 생기지 않은 실패라 다시 읽어도 없습니다.
+     * 그것을 404 로 돌려주면 화면이 몇 번 다시 부르다 로그아웃시키고,
+     * 데이터베이스 오류는 원인이 로그에 남지 않습니다.
+     * 그래서 그런 위반은 삼키지 않고 그대로 올려 500 과 오류 로그로 드러냅니다.
+     *
+     * 제약 이름은 대소문자를 가리지 않습니다. 데이터베이스가 이름을 어떻게 돌려주는지에 기대지 않기 위해서입니다.
+     * 이름은 PostgreSQL 이 표 이름 뒤에 _pkey 를 붙여 만든 기본값이라, 표 이름을 바꾸면 함께 바꿔야 합니다.
+     */
+    private static boolean isPrimaryKeyConflict(DataIntegrityViolationException e) {
+        for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException violation) {
+                return UNIQUE_VIOLATION.equals(violation.getSQLState())
+                        && PRIMARY_KEY_CONSTRAINT.equalsIgnoreCase(violation.getConstraintName());
+            }
+        }
+        return false;
     }
 
     /**
