@@ -226,7 +226,7 @@ public class ReviewProviderImpl implements ReviewProvider {
                         LocalDate.parse(response.visitedAt()),
                         response.rating(),
                         response.content(),
-                        response.petBreedAtVisit()));
+                        response.petBreedsAtVisit()));
             } catch (Exception e) {
                 log.warn("후기 하나를 읽지 못해 건너뜁니다: reviewId={}", response.reviewId());
             }
