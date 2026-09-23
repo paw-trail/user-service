@@ -1,6 +1,7 @@
 package com.pawtrail.user.domain.provider.dto;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -23,14 +24,21 @@ import java.util.UUID;
  * @param visitedAt       방문 일자입니다. 사용자가 달력에서 고르는 값이라 시각이 없습니다.
  * @param rating          최종 별점 1~5 입니다.
  * @param content         후기 본문입니다. 요약 재료의 핵심입니다.
- * @param petBreedAtVisit 작성 시점의 견종 이름입니다.
- *                        반려동물 서비스가 아직 없어 이름은 쓸 수 없지만,
- *                        이 값은 후기에 스냅샷으로 박혀 있어 "말티즈와 함께" 정도는 됩니다.
+ * @param petBreedsAtVisit 작성 시점의 견종 이름 목록입니다.
+ *                         후기 한 건에 여러 마리가 들어가므로 목록입니다.
+ *                         이 값은 후기에 스냅샷으로 박혀 있어 "말티즈와 함께" 정도는 됩니다.
+ *                         견종을 정하지 않은 아이는 review 가 걸러 보내므로 비어 있을 수 있습니다.
  */
 public record ReviewData(UUID reviewId,
                          UUID placeId,
                          LocalDate visitedAt,
                          Integer rating,
                          String content,
-                         String petBreedAtVisit) {
+                         List<String> petBreedsAtVisit) {
+
+    // 받은 쪽이 목록을 안 보냈거나 null 을 보냈을 때를 여기서 한 번만 다룹니다.
+    // 쓰는 자리마다 null 을 보게 하면 프롬프트를 만드는 쪽에 분기가 늘어납니다.
+    public ReviewData {
+        petBreedsAtVisit = petBreedsAtVisit == null ? List.of() : List.copyOf(petBreedsAtVisit);
+    }
 }
