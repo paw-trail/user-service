@@ -204,6 +204,10 @@ public class LlmProviderImpl implements LlmProvider {
      * 모델에게 UUID 를 넘겨 봐야 문장에 쓸 수 없고 토큰만 먹습니다.
      * 장소 식별자도 마찬가지인데, 어느 장소의 후기인지는
      * 방문 목록의 순서와 이름으로 이미 드러납니다.
+     *
+     * 견종이 하나도 없으면 그 칸을 아예 넣지 않습니다.
+     * 빈 목록을 실으면 모델이 "반려동물 없이 다녀왔다" 로 읽을 여지가 있는데,
+     * 실제로는 견종을 적지 않았을 뿐입니다.
      */
     private List<Map<String, Object>> toReviewPayload(List<ReviewData> reviews) {
         List<Map<String, Object>> result = new ArrayList<>();
@@ -212,7 +216,9 @@ public class LlmProviderImpl implements LlmProvider {
             Map<String, Object> one = new LinkedHashMap<>();
             one.put("rating", review.rating());
             one.put("content", review.content());
-            one.put("petBreed", review.petBreedAtVisit());
+            if (!review.petBreedsAtVisit().isEmpty()) {
+                one.put("petBreeds", review.petBreedsAtVisit());
+            }
             result.add(one);
         }
         return result;
